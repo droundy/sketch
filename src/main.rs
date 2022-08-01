@@ -9,6 +9,18 @@ fn conf() -> Conf {
         ..Default::default()
     }
 }
+
+fn color_selector(color: &mut Color) {
+    if root_ui().button(None, "White") {
+        *color = WHITE;
+    }
+    if root_ui().button(None, "Red") {
+        *color = RED;
+    }
+    if root_ui().button(None, "Blue") {
+        *color = BLUE;
+    }
+}
 #[macroquad::main(conf)]
 async fn main() {
     let mut points = Vec::new();
@@ -21,15 +33,7 @@ async fn main() {
     loop {
         // clear_background(WHITE);
 
-        if root_ui().button(None, "White") {
-            color = WHITE;
-        }
-        if root_ui().button(None, "Red") {
-            color = RED;
-        }
-        if root_ui().button(None, "Blue") {
-            color = BLUE;
-        }
+        color_selector(&mut color);
         root_ui().slider(0, "time", 0.0..1.0, &mut time);
 
         if !root_ui().is_mouse_captured() {
