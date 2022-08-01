@@ -17,10 +17,19 @@ async fn main() {
     let mut image = Image::gen_image_color(2000, 1024, BLACK);
     let width = image.width as usize;
     let radius = 5.0;
+    let mut color = WHITE;
     loop {
         // clear_background(WHITE);
 
-        if root_ui().button(None, "Hello") {}
+        if root_ui().button(None, "White") {
+            color = WHITE;
+        }
+        if root_ui().button(None, "Red") {
+            color = RED;
+        }
+        if root_ui().button(None, "Blue") {
+            color = BLUE;
+        }
         root_ui().slider(0, "time", 0.0..1.0, &mut time);
 
         if !root_ui().is_mouse_captured() {
@@ -95,7 +104,7 @@ async fn main() {
             return;
         }
 
-        draw_texture(Texture2D::from_image(&image), 0.0, 0.0, WHITE);
+        draw_texture(Texture2D::from_image(&image), 0.0, 0.0, color);
         // for p in points.iter() {
         //     draw_circle(p.0, p.1, 5.0, BLUE);
         // }
