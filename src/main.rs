@@ -71,7 +71,7 @@ async fn main() {
                                 && here.dot(parallel) > par_start
                                 && here.dot(parallel) < par_stop
                             {
-                                image.get_image_data_mut()[x + y * width] = [255, 0x55, 0x55, 255];
+                                image.get_image_data_mut()[x + y * width] = [255, 255, 255, 255];
                             }
                         }
                     }
@@ -90,7 +90,7 @@ async fn main() {
                     for y in y_start..y_stop {
                         if (x as f32 - pos.x).powi(2) + (y as f32 - pos.y).powi(2) < radius.powi(2)
                         {
-                            image.get_image_data_mut()[x + y * width] = [255, 0x55, 0x55, 255];
+                            image.get_image_data_mut()[x + y * width] = [255, 255, 255, 255];
                         }
                         old_pos = Some(pos);
                     }
