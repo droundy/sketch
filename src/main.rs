@@ -1,6 +1,12 @@
 use std::{f32::consts::PI, sync::atomic::AtomicBool};
 
-use macroquad::{prelude::*, ui::root_ui};
+use macroquad::prelude::{
+    draw_circle, draw_circle_lines, draw_line, draw_rectangle, draw_rectangle_lines, draw_texture,
+    is_key_pressed, is_mouse_button_down, is_mouse_button_pressed, mouse_position, next_frame,
+    screen_height, screen_width, Color, Conf, Image, KeyCode, MouseButton, Texture2D, Vec2, BLACK,
+    GRAY, WHITE,
+};
+use macroquad::ui::root_ui;
 
 fn conf() -> Conf {
     Conf {
@@ -9,6 +15,15 @@ fn conf() -> Conf {
         window_height: 768,
         fullscreen: true,
         ..Default::default()
+    }
+}
+
+fn random_color() -> Color {
+    Color {
+        r: rand::random(),
+        g: rand::random(),
+        b: rand::random(),
+        a: 1.0,
     }
 }
 
@@ -160,7 +175,7 @@ impl Drawing {
                                     a: 0.0,
                                 },
                             ),
-                            color: WHITE,
+                            color: random_color(),
                         });
                         self.current = self.layers.len() - 1;
                         if self.tool == Tool::Eraser {
