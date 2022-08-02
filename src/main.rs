@@ -97,6 +97,41 @@ fn color_selector(color: &mut Color) -> bool {
     false
 }
 
+impl Drawing {
+    fn layer_selector(&self, current_layer: &mut usize) -> bool {
+        const WIDTH: f32 = 50.0;
+        const HEIGHT: f32 = 40.0;
+        for (i, l) in self.layers.iter().enumerate() {
+            let y = i as f32 * HEIGHT;
+            draw_rectangle(0.0, y, WIDTH, HEIGHT, l.color);
+            let color = if i == *current_layer { WHITE } else { GRAY };
+            draw_rectangle_lines(0.0, y, WIDTH, HEIGHT, 5.0, BLACK);
+            draw_rectangle_lines(2.0, y + 2.0, WIDTH - 4.0, HEIGHT - 4.0, 5.0, color);
+        }
+        let y = self.layers.len() as f32 * HEIGHT;
+        draw_rectangle(0.0, y, WIDTH, HEIGHT, BLACK);
+        draw_rectangle_lines(0.0, y, WIDTH, HEIGHT, 5.0, BLACK);
+        draw_rectangle_lines(2.0, y + 2.0, WIDTH - 4.0, HEIGHT - 4.0, 5.0, GRAY);
+        draw_line(
+            WIDTH * 0.5,
+            y + HEIGHT * 0.5 - 10.0,
+            WIDTH * 0.5,
+            y + HEIGHT * 0.5 + 10.0,
+            5.0,
+            WHITE,
+        );
+        draw_line(
+            WIDTH * 0.5 - 10.0,
+            y + HEIGHT * 0.5,
+            WIDTH * 0.5 + 10.0,
+            y + HEIGHT * 0.5,
+            5.0,
+            WHITE,
+        );
+        false
+    }
+}
+
 struct Layer {
     color: Color,
     bitmap: Image,
@@ -130,17 +165,15 @@ async fn main() {
             return;
         }
 
-        root_ui().slider(0, "time", 0.0..1.0, &mut time);
-
         draw_texture(
             Texture2D::from_image(&drawing.layers[current_layer].bitmap),
             0.0,
             0.0,
             drawing.layers[current_layer].color,
         );
-        if !root_ui().is_mouse_captured()
-            && !color_selector(&mut drawing.layers[current_layer].color)
-        {
+        let color_selected = color_selector(&mut drawing.layers[current_layer].color);
+        let layer_selected = drawing.layer_selector(&mut current_layer);
+        if !root_ui().is_mouse_captured() && !color_selected && !layer_selected {
             if is_mouse_button_down(MouseButton::Left) {
                 let pos = mouse_position();
                 let pos = Vec2::new(pos.0, pos.1);
