@@ -98,7 +98,7 @@ fn color_selector(color: &mut Color) -> bool {
 }
 
 impl Drawing {
-    fn layer_selector(&self, current_layer: &mut usize) -> bool {
+    fn layer_selector(&mut self, current_layer: &mut usize) -> bool {
         const WIDTH: f32 = 50.0;
         const HEIGHT: f32 = 40.0;
         for (i, l) in self.layers.iter().enumerate() {
@@ -128,6 +128,33 @@ impl Drawing {
             5.0,
             WHITE,
         );
+        if is_mouse_button_down(MouseButton::Left) || is_mouse_button_pressed(MouseButton::Left) {
+            let (x, y) = mouse_position();
+            let y = (y / HEIGHT) as usize;
+            if x < WIDTH && y <= self.layers.len() {
+                if is_mouse_button_pressed(MouseButton::Left) {
+                    if y == self.layers.len() {
+                        self.layers.push(Layer {
+                            bitmap: Image::gen_image_color(
+                                self.width,
+                                self.height,
+                                Color {
+                                    r: 0.0,
+                                    g: 0.0,
+                                    b: 0.0,
+                                    a: 0.0,
+                                },
+                            ),
+                            color: WHITE,
+                        });
+                        *current_layer = self.layers.len() - 1;
+                    } else {
+                        *current_layer = y;
+                    }
+                }
+                return true;
+            }
+        }
         false
     }
 }
@@ -146,8 +173,7 @@ struct Drawing {
 #[macroquad::main(conf)]
 async fn main() {
     let mut old_pos: Option<Vec2> = None;
-    let mut time = 0.0;
-    let mut image = Image::gen_image_color(2000, 1024, BLACK);
+    let image = Image::gen_image_color(2000, 1024, BLACK);
     let width = image.width as usize;
     let radius = 5.0;
     let mut current_layer = 0;
@@ -165,12 +191,9 @@ async fn main() {
             return;
         }
 
-        draw_texture(
-            Texture2D::from_image(&drawing.layers[current_layer].bitmap),
-            0.0,
-            0.0,
-            drawing.layers[current_layer].color,
-        );
+        for l in drawing.layers.iter() {
+            draw_texture(Texture2D::from_image(&l.bitmap), 0.0, 0.0, l.color);
+        }
         let color_selected = color_selector(&mut drawing.layers[current_layer].color);
         let layer_selected = drawing.layer_selector(&mut current_layer);
         if !root_ui().is_mouse_captured() && !color_selected && !layer_selected {
@@ -243,6 +266,8 @@ async fn main() {
             } else {
                 old_pos = None;
             }
+        } else {
+            old_pos = None;
         }
 
         next_frame().await
