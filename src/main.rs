@@ -12,7 +12,7 @@ fn conf() -> Conf {
     }
 }
 
-fn color_selector_color(fx: f32, fy: f32) -> Color {
+fn color_selector_color(fx: f32, fy: f32) -> Option<Color> {
     let fx = fx * 2.0 - 1.0;
     let fy = fy * 2.0 - 1.0;
     let angle = fy.atan2(fx) + PI;
@@ -34,26 +34,28 @@ fn color_selector_color(fx: f32, fy: f32) -> Color {
     } else {
         [1.0, 0.0, c1]
     };
-    const RSATURATED: f32 = 0.5;
+    const RSATURATED: f32 = 0.6;
     if radius < RSATURATED {
         let x = 1.0 - radius / RSATURATED;
-        let extra = x.powi(2) * (1.0 - (x - 1.0).powi(2));
+        let extra = x * (1.0 - (x - 1.0).powi(4));
         let rgb = rgb.map(|c| c * (1.0 - extra) + extra);
-        Color {
+        Some(Color {
             r: rgb[0],
             g: rgb[1],
             b: rgb[2],
             a: 1.0,
-        }
-    } else {
+        })
+    } else if radius <= 1.0 {
         let x = 1.0 - (radius - RSATURATED) / (1.0 - RSATURATED);
-        let r = 1.0 - (1.0 - x).powi(2);
-        Color {
+        let r = x * (1.0 - (1.0 - x).powi(2));
+        Some(Color {
             r: r * rgb[0],
             g: r * rgb[1],
             b: r * rgb[2],
             a: 1.0,
-        }
+        })
+    } else {
+        None
     }
 }
 
@@ -61,60 +63,34 @@ fn color_selector(color: &mut Color) -> bool {
     let swidth = screen_width();
     let sheight = screen_height();
 
-    let radius = 100.0;
-    let cx = swidth - radius;
-    let cy = sheight - radius;
-    for theta in (0..100).map(|i| i as f32 * (PI / 50.0)) {
-        let (sin, cos) = theta.sin_cos();
-        draw_line(
-            cx,
-            cy,
-            cx + radius * cos,
-            cy + radius * sin,
-            radius / 100.0,
-            color_selector_color(sin, cos),
-        );
-    }
-
     let w = 200.0;
     let h = 200.0;
-    draw_rectangle(swidth - w, sheight - h, w, h, RED);
     let dx = w * 0.01;
     let dy = h * 0.01;
     for i in 0..100 {
         for j in 0..100 {
             let fx = i as f32 * 0.01;
             let fy = j as f32 * 0.01;
-            let x = fx * w + swidth - w;
-            let y = fy * h + sheight - h;
-            draw_rectangle(x, y, dx, dy, color_selector_color(fx, fy));
+            if let Some(c) = color_selector_color(fx, fy) {
+                let x = fx * w + swidth - w;
+                let y = fy * h + sheight - h;
+                draw_rectangle(x, y, dx, dy, c);
+            }
         }
     }
 
-    // let radius = 100.0;
-    // let center = Vec2::new(swidth - radius, sheight - radius);
-    // const DTHETA: f32 = PI / 50.0;
-    // for theta in (0..100).map(|i| i as f32 * DTHETA) {
-    //     for r in (0..100).rev().map(|i| i as f32 * radius * 0.01) {
-    //         let (sin, cos) = theta.sin_cos();
-    //         let v1 = center + r * Vec2::new(sin, cos);
-    //         let (nsin, ncos) = (theta + DTHETA).sin_cos();
-    //         let v2 = center + r * Vec2::new(nsin, ncos);
-    //         draw_triangle(v1, v2, center, color_selector_color(sin, cos));
-    //     }
-    // }
     static AM_DRAGGING: AtomicBool = AtomicBool::new(false);
     if is_mouse_button_down(MouseButton::Left) {
         let pos = mouse_position();
-        if pos.0 > swidth - w && pos.1 > sheight - h {
-            let fx = (pos.0 + w - swidth) / w;
-            let fy = (pos.1 + h - sheight) / h;
-            *color = color_selector_color(fx, fy);
+        let fx = (pos.0 + w - swidth) / w;
+        let fy = (pos.1 + h - sheight) / h;
+        if let Some(c) = color_selector_color(fx, fy) {
+            *color = c;
             AM_DRAGGING.store(true, std::sync::atomic::Ordering::Relaxed);
             return true;
-        } else if AM_DRAGGING.load(std::sync::atomic::Ordering::Relaxed) {
-            return true;
         }
+    } else if AM_DRAGGING.load(std::sync::atomic::Ordering::Relaxed) {
+        return true;
     } else {
         AM_DRAGGING.store(false, std::sync::atomic::Ordering::Relaxed);
     }
