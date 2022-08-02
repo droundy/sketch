@@ -1,4 +1,4 @@
-use std::f32::consts::PI;
+use std::{f32::consts::PI, sync::atomic::AtomicBool};
 
 use macroquad::{prelude::*, ui::root_ui};
 
@@ -19,6 +19,7 @@ fn color_selector_color(fx: f32, fy: f32) -> Color {
     let radius = (fx * fx + fy * fy).sqrt();
     const PI6: f32 = PI / 3.0;
     let c1 = (((angle + PI6) % (2.0 * PI / 3.0)) / (PI / 3.0) - 1.0).abs();
+    let c1 = 1.0 - (1.0 - c1).abs().powf(1.2);
     assert!(c1.abs() <= 1.0);
     let rgb = if angle < PI6 {
         [1.0, c1, 0.0]
@@ -34,8 +35,8 @@ fn color_selector_color(fx: f32, fy: f32) -> Color {
         [1.0, 0.0, c1]
     };
     const RSATURATED: f32 = 0.5;
-    if radius > RSATURATED {
-        let x = (radius - RSATURATED) / (1.0 - RSATURATED);
+    if radius < RSATURATED {
+        let x = 1.0 - radius / RSATURATED;
         let extra = x.powi(2) * (1.0 - (x - 1.0).powi(2));
         let rgb = rgb.map(|c| c * (1.0 - extra) + extra);
         Color {
@@ -45,7 +46,7 @@ fn color_selector_color(fx: f32, fy: f32) -> Color {
             a: 1.0,
         }
     } else {
-        let x = radius / RSATURATED;
+        let x = 1.0 - (radius - RSATURATED) / (1.0 - RSATURATED);
         let r = 1.0 - (1.0 - x).powi(2);
         Color {
             r: r * rgb[0],
@@ -102,14 +103,20 @@ fn color_selector(color: &mut Color) -> bool {
     //         draw_triangle(v1, v2, center, color_selector_color(sin, cos));
     //     }
     // }
+    static AM_DRAGGING: AtomicBool = AtomicBool::new(false);
     if is_mouse_button_down(MouseButton::Left) {
         let pos = mouse_position();
         if pos.0 > swidth - w && pos.1 > sheight - h {
             let fx = (pos.0 + w - swidth) / w;
             let fy = (pos.1 + h - sheight) / h;
             *color = color_selector_color(fx, fy);
+            AM_DRAGGING.store(true, std::sync::atomic::Ordering::Relaxed);
+            return true;
+        } else if AM_DRAGGING.load(std::sync::atomic::Ordering::Relaxed) {
             return true;
         }
+    } else {
+        AM_DRAGGING.store(false, std::sync::atomic::Ordering::Relaxed);
     }
     false
 }
