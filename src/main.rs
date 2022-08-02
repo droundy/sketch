@@ -1,9 +1,6 @@
 use std::f32::consts::PI;
 
-use macroquad::{
-    prelude::*,
-    ui::{root_ui, InputHandler},
-};
+use macroquad::{prelude::*, ui::root_ui};
 
 fn conf() -> Conf {
     Conf {
@@ -36,17 +33,26 @@ fn color_selector_color(fx: f32, fy: f32) -> Color {
     } else {
         [1.0, 0.0, c1]
     };
-    let radius = if radius > 0.8 {
-        (2.0_f32).sqrt() * radius.sqrt() / (1.0 + c1 * c1).sqrt()
+    const RSATURATED: f32 = 0.5;
+    if radius > RSATURATED {
+        let x = (radius - RSATURATED) / (1.0 - RSATURATED);
+        let extra = x.powi(2) * (1.0 - (x - 1.0).powi(2));
+        let rgb = rgb.map(|c| c * (1.0 - extra) + extra);
+        Color {
+            r: rgb[0],
+            g: rgb[1],
+            b: rgb[2],
+            a: 1.0,
+        }
     } else {
-        (2.0_f32).sqrt() * radius.sqrt() / (1.0 + c1 * c1).sqrt()
-    
-    };
-    Color {
-        r: radius * rgb[0],
-        g: radius * rgb[1],
-        b: radius * rgb[2],
-        a: 1.0,
+        let x = radius / RSATURATED;
+        let r = 1.0 - (1.0 - x).powi(2);
+        Color {
+            r: r * rgb[0],
+            g: r * rgb[1],
+            b: r * rgb[2],
+            a: 1.0,
+        }
     }
 }
 
