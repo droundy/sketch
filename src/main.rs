@@ -96,15 +96,34 @@ fn color_selector(color: &mut Color) -> bool {
     }
     false
 }
+
+struct Layer {
+    color: Color,
+    bitmap: Image,
+}
+
+struct Drawing {
+    height: u16,
+    width: u16,
+    layers: Vec<Layer>,
+}
+
 #[macroquad::main(conf)]
 async fn main() {
-    let mut points = Vec::new();
     let mut old_pos: Option<Vec2> = None;
     let mut time = 0.0;
     let mut image = Image::gen_image_color(2000, 1024, BLACK);
     let width = image.width as usize;
     let radius = 5.0;
-    let mut color = WHITE;
+    let mut current_layer = 0;
+    let mut drawing = Drawing {
+        width: image.width,
+        height: image.height,
+        layers: vec![Layer {
+            color: WHITE,
+            bitmap: image,
+        }],
+    };
     loop {
         // clear_background(WHITE);
         if is_key_pressed(KeyCode::Escape) {
@@ -113,8 +132,15 @@ async fn main() {
 
         root_ui().slider(0, "time", 0.0..1.0, &mut time);
 
-        draw_texture(Texture2D::from_image(&image), 0.0, 0.0, color);
-        if !root_ui().is_mouse_captured() && !color_selector(&mut color) {
+        draw_texture(
+            Texture2D::from_image(&drawing.layers[current_layer].bitmap),
+            0.0,
+            0.0,
+            drawing.layers[current_layer].color,
+        );
+        if !root_ui().is_mouse_captured()
+            && !color_selector(&mut drawing.layers[current_layer].color)
+        {
             if is_mouse_button_down(MouseButton::Left) {
                 let pos = mouse_position();
                 let pos = Vec2::new(pos.0, pos.1);
@@ -142,7 +168,9 @@ async fn main() {
                         std::cmp::min(pos.y as usize, old.y as usize),
                     ) - radius as usize;
                     let y_stop = std::cmp::min(
-                        image.height as usize - 1 - (radius as usize),
+                        drawing.layers[current_layer].bitmap.height as usize
+                            - 1
+                            - (radius as usize),
                         std::cmp::max(pos.y as usize, old.y as usize),
                     ) + radius as usize
                         + 1;
@@ -153,7 +181,8 @@ async fn main() {
                                 && here.dot(parallel) > par_start
                                 && here.dot(parallel) < par_stop
                             {
-                                image.get_image_data_mut()[x + y * width] = [255, 255, 255, 255];
+                                drawing.layers[current_layer].bitmap.get_image_data_mut()
+                                    [x + y * width] = [255, 255, 255, 255];
                             }
                         }
                     }
@@ -164,7 +193,7 @@ async fn main() {
                     + 1;
                 let y_start = std::cmp::max(radius as usize, pos.y as usize) - radius as usize;
                 let y_stop = std::cmp::min(
-                    image.height as usize - 1 - (radius as usize),
+                    drawing.height as usize - 1 - (radius as usize),
                     pos.y as usize,
                 ) + radius as usize
                     + 1;
@@ -172,25 +201,16 @@ async fn main() {
                     for y in y_start..y_stop {
                         if (x as f32 - pos.x).powi(2) + (y as f32 - pos.y).powi(2) < radius.powi(2)
                         {
-                            image.get_image_data_mut()[x + y * width] = [255, 255, 255, 255];
+                            drawing.layers[current_layer].bitmap.get_image_data_mut()
+                                [x + y * width] = [255, 255, 255, 255];
                         }
                         old_pos = Some(pos);
                     }
                 }
-                points.push(pos);
             } else {
                 old_pos = None;
             }
         }
-
-        // for p in points.iter() {
-        //     draw_circle(p.0, p.1, 5.0, BLUE);
-        // }
-        // draw_line(40.0, 40.0, 100.0, 200.0, 15.0, BLUE);
-        // draw_rectangle(screen_width() / 2.0 - 60.0, 100.0, 120.0, 60.0, GREEN);
-        // draw_circle(screen_width() - 30.0, screen_height() - 30.0, 15.0, YELLOW);
-
-        // draw_text("IT WORKS!", 20.0, 20.0, 30.0, DARKGRAY);
 
         next_frame().await
     }
