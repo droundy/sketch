@@ -11,8 +11,8 @@ use macroquad::ui::root_ui;
 fn conf() -> Conf {
     Conf {
         window_title: String::from("Fun draw"),
-        window_width: 1260,
-        window_height: 768,
+        window_width: 1920,
+        window_height: 1080,
         fullscreen: true,
         ..Default::default()
     }
@@ -103,9 +103,9 @@ fn color_selector(color: &mut Color) -> bool {
             *color = c;
             AM_DRAGGING.store(true, std::sync::atomic::Ordering::Relaxed);
             return true;
+        } else if AM_DRAGGING.load(std::sync::atomic::Ordering::Relaxed) {
+            return true;
         }
-    } else if AM_DRAGGING.load(std::sync::atomic::Ordering::Relaxed) {
-        return true;
     } else {
         AM_DRAGGING.store(false, std::sync::atomic::Ordering::Relaxed);
     }
@@ -226,7 +226,7 @@ struct Drawing {
 #[macroquad::main(conf)]
 async fn main() {
     let mut old_pos: Option<Vec2> = None;
-    let image = Image::gen_image_color(2000, 1024, BLACK);
+    let image = Image::gen_image_color(screen_width() as u16, screen_height() as u16, BLACK);
     let width = image.width as usize;
     let mut drawing = Drawing {
         current: 0,
