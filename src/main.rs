@@ -141,7 +141,7 @@ impl Drawing {
             WIDTH * 0.5,
             y + HEIGHT * 0.5 + 10.0,
             5.0,
-            WHITE,
+            random_color(),
         );
         draw_line(
             WIDTH * 0.5 - 10.0,
