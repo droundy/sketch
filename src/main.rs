@@ -1,3 +1,4 @@
+use std::collections::BTreeMap;
 use std::{f32::consts::PI, sync::atomic::AtomicBool};
 
 use macroquad::prelude::{
@@ -9,6 +10,9 @@ use macroquad::prelude::{
 use macroquad::texture::{draw_texture_ex, DrawTextureParams};
 use macroquad::ui::root_ui;
 
+mod layer;
+use layer::Layer;
+
 fn conf() -> Conf {
     Conf {
         window_title: String::from("Fun draw"),
@@ -16,15 +20,6 @@ fn conf() -> Conf {
         window_height: 1080,
         fullscreen: true,
         ..Default::default()
-    }
-}
-
-fn random_color() -> Color {
-    Color {
-        r: rand::random(),
-        g: rand::random(),
-        b: rand::random(),
-        a: 1.0,
     }
 }
 
@@ -125,7 +120,7 @@ impl Drawing {
         let x = TSTART + time * t_width;
         draw_rectangle(x, THEIGHT * 0.5, FRAME_WIDTH, THEIGHT, BLACK);
         draw_texture_ex(
-            self.layers[self.current].texture,
+            self.layers[self.current].texture(time),
             x,
             THEIGHT * 0.5,
             self.layers[self.current].color,
@@ -188,21 +183,7 @@ impl Drawing {
             if x < WIDTH {
                 if is_mouse_button_pressed(MouseButton::Left) {
                     if y == self.layers.len() {
-                        let bitmap = Image::gen_image_color(
-                            self.width,
-                            self.height,
-                            Color {
-                                r: 0.0,
-                                g: 0.0,
-                                b: 0.0,
-                                a: 0.0,
-                            },
-                        );
-                        self.layers.push(Layer {
-                            texture: Texture2D::from_image(&bitmap),
-                            bitmap,
-                            color: random_color(),
-                        });
+                        self.layers.push(Layer::new(0.0));
                         self.current = self.layers.len() - 1;
                         if self.tool == Tool::Eraser {
                             self.tool = Tool::BigPen;
@@ -227,12 +208,6 @@ impl Drawing {
     }
 }
 
-struct Layer {
-    color: Color,
-    bitmap: Image,
-    texture: Texture2D,
-}
-
 #[derive(PartialEq, Eq, Debug, Copy, Clone)]
 enum Tool {
     Eraser,
@@ -251,18 +226,13 @@ struct Drawing {
 #[macroquad::main(conf)]
 async fn main() {
     let mut old_pos: Option<Vec2> = None;
-    let bitmap = Image::gen_image_color(screen_width() as u16, screen_height() as u16, BLACK);
-    let width = bitmap.width as usize;
+    let width = screen_width() as usize;
     let mut drawing = Drawing {
         current: 0,
         tool: Tool::BigPen,
-        width: bitmap.width,
-        height: bitmap.height,
-        layers: vec![Layer {
-            color: random_color(),
-            texture: Texture2D::from_image(&bitmap),
-            bitmap,
-        }],
+        width: screen_width() as u16,
+        height: screen_height() as u16,
+        layers: vec![Layer::new(0.0)],
     };
     loop {
         // clear_background(WHITE);
@@ -271,8 +241,7 @@ async fn main() {
         }
 
         for l in drawing.layers.iter_mut() {
-            l.texture.update(&l.bitmap);
-            draw_texture(l.texture, 0.0, 0.0, l.color);
+            draw_texture(l.texture(0.0), 0.0, 0.0, l.color);
         }
         let color_selected = color_selector(&mut drawing.layers[drawing.current].color);
         let frame_selected = drawing.frame_selector();
@@ -291,6 +260,7 @@ async fn main() {
                 } else {
                     [255; 4]
                 };
+                let data = drawing.layers[drawing.current].get_frame_data_mut(0.0);
                 if let Some(old) = old_pos {
                     let parallel = (old - pos).normalize();
                     let orthog = Vec2::new(parallel.y, -parallel.x);
@@ -315,9 +285,7 @@ async fn main() {
                         std::cmp::min(pos.y as usize, old.y as usize),
                     ) - radius as usize;
                     let y_stop = std::cmp::min(
-                        drawing.layers[drawing.current].bitmap.height as usize
-                            - 1
-                            - (radius as usize),
+                        drawing.height as usize - 1 - (radius as usize),
                         std::cmp::max(pos.y as usize, old.y as usize),
                     ) + radius as usize
                         + 1;
@@ -328,8 +296,7 @@ async fn main() {
                                 && here.dot(parallel) > par_start
                                 && here.dot(parallel) < par_stop
                             {
-                                drawing.layers[drawing.current].bitmap.get_image_data_mut()
-                                    [x + y * width] = drawn;
+                                data[x + y * width] = drawn;
                             }
                         }
                     }
@@ -348,8 +315,7 @@ async fn main() {
                     for y in y_start..y_stop {
                         if (x as f32 - pos.x).powi(2) + (y as f32 - pos.y).powi(2) < radius.powi(2)
                         {
-                            drawing.layers[drawing.current].bitmap.get_image_data_mut()
-                                [x + y * width] = drawn;
+                            data[x + y * width] = drawn;
                         }
                         old_pos = Some(pos);
                     }
