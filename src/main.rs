@@ -125,7 +125,7 @@ impl Drawing {
         let x = TSTART + time * t_width;
         draw_rectangle(x, THEIGHT * 0.5, FRAME_WIDTH, THEIGHT, BLACK);
         draw_texture_ex(
-            self.layers[self.current].texture.unwrap(),
+            self.layers[self.current].texture,
             x,
             THEIGHT * 0.5,
             self.layers[self.current].color,
@@ -188,18 +188,19 @@ impl Drawing {
             if x < WIDTH {
                 if is_mouse_button_pressed(MouseButton::Left) {
                     if y == self.layers.len() {
+                        let bitmap = Image::gen_image_color(
+                            self.width,
+                            self.height,
+                            Color {
+                                r: 0.0,
+                                g: 0.0,
+                                b: 0.0,
+                                a: 0.0,
+                            },
+                        );
                         self.layers.push(Layer {
-                            texture: None,
-                            bitmap: Image::gen_image_color(
-                                self.width,
-                                self.height,
-                                Color {
-                                    r: 0.0,
-                                    g: 0.0,
-                                    b: 0.0,
-                                    a: 0.0,
-                                },
-                            ),
+                            texture: Texture2D::from_image(&bitmap),
+                            bitmap,
                             color: random_color(),
                         });
                         self.current = self.layers.len() - 1;
@@ -229,7 +230,7 @@ impl Drawing {
 struct Layer {
     color: Color,
     bitmap: Image,
-    texture: Option<Texture2D>,
+    texture: Texture2D,
 }
 
 #[derive(PartialEq, Eq, Debug, Copy, Clone)]
@@ -250,17 +251,17 @@ struct Drawing {
 #[macroquad::main(conf)]
 async fn main() {
     let mut old_pos: Option<Vec2> = None;
-    let image = Image::gen_image_color(screen_width() as u16, screen_height() as u16, BLACK);
-    let width = image.width as usize;
+    let bitmap = Image::gen_image_color(screen_width() as u16, screen_height() as u16, BLACK);
+    let width = bitmap.width as usize;
     let mut drawing = Drawing {
         current: 0,
         tool: Tool::BigPen,
-        width: image.width,
-        height: image.height,
+        width: bitmap.width,
+        height: bitmap.height,
         layers: vec![Layer {
             color: random_color(),
-            bitmap: image,
-            texture: None,
+            texture: Texture2D::from_image(&bitmap),
+            bitmap,
         }],
     };
     loop {
@@ -270,11 +271,8 @@ async fn main() {
         }
 
         for l in drawing.layers.iter_mut() {
-            if l.texture.is_none() {
-                l.texture = Some(Texture2D::from_image(&l.bitmap));
-            }
-            l.texture.unwrap().update(&l.bitmap);
-            draw_texture(l.texture.unwrap(), 0.0, 0.0, l.color);
+            l.texture.update(&l.bitmap);
+            draw_texture(l.texture, 0.0, 0.0, l.color);
         }
         let color_selected = color_selector(&mut drawing.layers[drawing.current].color);
         let frame_selected = drawing.frame_selector();
