@@ -110,27 +110,7 @@ fn color_selector(color: &mut Color) -> bool {
 
 impl Drawing {
     fn frame_selector(&mut self) -> bool {
-        const TSTART: f32 = 100.0;
-        const THEIGHT: f32 = 50.0;
-        const FRAME_WIDTH: f32 = 70.0;
-        let tstop: f32 = screen_width() - 2.0 * FRAME_WIDTH;
-        let t_width = tstop - TSTART;
-        draw_line(TSTART, THEIGHT, tstop, THEIGHT, 4.0, GRAY);
-        let time = 0.0;
-        let x = TSTART + time * t_width;
-        draw_rectangle(x, THEIGHT * 0.5, FRAME_WIDTH, THEIGHT, BLACK);
-        draw_texture_ex(
-            self.layers[self.current].texture(time),
-            x,
-            THEIGHT * 0.5,
-            self.layers[self.current].color,
-            DrawTextureParams {
-                dest_size: Some(Vec2::new(FRAME_WIDTH, THEIGHT)),
-                ..Default::default()
-            },
-        );
-        draw_rectangle_lines(x, THEIGHT * 0.5, FRAME_WIDTH, THEIGHT, 2.0, WHITE);
-        false
+        self.layers[self.current].frame_selector()
     }
     fn layer_selector(&mut self) -> bool {
         const WIDTH: f32 = 50.0;
@@ -226,7 +206,6 @@ struct Drawing {
 #[macroquad::main(conf)]
 async fn main() {
     let mut old_pos: Option<Vec2> = None;
-    let width = screen_width() as usize;
     let mut drawing = Drawing {
         current: 0,
         tool: Tool::BigPen,
@@ -234,6 +213,7 @@ async fn main() {
         height: screen_height() as u16,
         layers: vec![Layer::new(0.0)],
     };
+    let width = drawing.width as usize;
     loop {
         // clear_background(WHITE);
         if is_key_pressed(KeyCode::Escape) {
