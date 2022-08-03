@@ -1,13 +1,16 @@
+use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
+
 use macroquad::{
     prelude::{
         draw_circle, draw_circle_lines, draw_line, draw_rectangle, draw_rectangle_lines,
         draw_texture, is_key_pressed, is_mouse_button_down, is_mouse_button_pressed,
-        mouse_position, next_frame, screen_height, screen_width, Color, Conf, Image, KeyCode,
-        MouseButton, Texture2D, Vec2, BLACK, GRAY, WHITE,
+        is_mouse_button_released, mouse_position, next_frame, screen_height, screen_width, Color,
+        Conf, Image, KeyCode, MouseButton, Texture2D, Vec2, BLACK, GRAY, WHITE,
     },
     texture::{draw_texture_ex, DrawTextureParams},
 };
 
+#[derive(Clone)]
 struct Bitmap {
     time: f32,
     bitmap: Image,
@@ -49,7 +52,7 @@ impl Layer {
         self.keyframes[0].bitmap.get_image_data_mut()
     }
 
-    pub fn frame_selector(&mut self) -> bool {
+    pub fn frame_selector(&mut self, now: &mut f32) -> bool {
         const TSTART: f32 = 100.0;
         const THEIGHT: f32 = 50.0;
         const FRAME_WIDTH: f32 = 70.0;
@@ -58,8 +61,7 @@ impl Layer {
         draw_line(TSTART, THEIGHT, tstop, THEIGHT, 4.0, GRAY);
 
         for frame in self.keyframes.iter() {
-            let time = frame.time;
-            let x = TSTART + time * t_width;
+            let x = TSTART + frame.time * t_width;
             draw_rectangle(x, THEIGHT * 0.5, FRAME_WIDTH, THEIGHT, BLACK);
             draw_texture_ex(
                 frame.texture,
@@ -74,17 +76,69 @@ impl Layer {
             draw_rectangle_lines(x, THEIGHT * 0.5, FRAME_WIDTH, THEIGHT, 2.0, WHITE);
         }
         let pos = mouse_position();
-        if pos.1 < 2.0 * THEIGHT {
-            let time = (pos.0 - TSTART) / (tstop - TSTART);
-            if let Some(frame) = self
+        if pos.1 <= 1.5 * THEIGHT {
+            let time = (pos.0 - FRAME_WIDTH * 0.5 - TSTART) / (tstop - TSTART);
+            static AM_DRAGGING: AtomicBool = AtomicBool::new(false);
+            static KEYFRAME: AtomicUsize = AtomicUsize::new(0);
+            let am_dragging = AM_DRAGGING.load(Ordering::Relaxed);
+            let drag_frame = KEYFRAME.load(Ordering::Relaxed);
+            let mouse_released = is_mouse_button_released(MouseButton::Left);
+            let mouse_pressed = is_mouse_button_pressed(MouseButton::Left);
+            let mouse_down = is_mouse_button_down(MouseButton::Left);
+            if let Some((i, frame)) = self
                 .keyframes
                 .iter()
-                .filter(|f| {
+                .enumerate()
+                .filter(|(_, f)| {
                     let x = TSTART + f.time * (tstop - TSTART);
-                    (pos.0 >= x - FRAME_WIDTH*0.5) && (pos.0 <= x + FRAME_WIDTH)
+                    (pos.0 >= x - FRAME_WIDTH * 0.5) && (pos.0 <= x + FRAME_WIDTH * 1.5)
                 })
                 .next()
             {
+                let x = TSTART + frame.time * t_width;
+                draw_rectangle_lines(x, THEIGHT * 0.5, FRAME_WIDTH, THEIGHT, 4.0, WHITE);
+                if am_dragging && drag_frame == i {
+                    draw_rectangle_lines(x, THEIGHT * 0.5, FRAME_WIDTH, THEIGHT, 6.0, WHITE);
+                    if mouse_released {
+                        *now = frame.time;
+                        AM_DRAGGING.store(false, Ordering::Relaxed);
+                    }
+                } else if mouse_pressed {
+                    AM_DRAGGING.store(true, Ordering::Relaxed);
+                    KEYFRAME.store(i, Ordering::Relaxed);
+                }
+            } else if am_dragging {
+                if mouse_down {
+                    draw_rectangle(
+                        pos.0 - FRAME_WIDTH * 0.5,
+                        THEIGHT * 0.5,
+                        FRAME_WIDTH,
+                        THEIGHT,
+                        BLACK,
+                    );
+                    draw_texture_ex(
+                        self.keyframes[drag_frame].texture,
+                        pos.0 - FRAME_WIDTH * 0.5,
+                        THEIGHT * 0.5,
+                        self.color,
+                        DrawTextureParams {
+                            dest_size: Some(Vec2::new(FRAME_WIDTH, THEIGHT)),
+                            ..Default::default()
+                        },
+                    );
+                    draw_rectangle_lines(
+                        pos.0 - FRAME_WIDTH * 0.5,
+                        THEIGHT * 0.5,
+                        FRAME_WIDTH,
+                        THEIGHT,
+                        2.0,
+                        GRAY,
+                    );
+                } else {
+                    self.keyframes[KEYFRAME.load(Ordering::Relaxed)].time = time;
+                    *now = time;
+                    AM_DRAGGING.store(false, Ordering::Relaxed);
+                }
             } else {
                 draw_rectangle(
                     pos.0 - FRAME_WIDTH * 0.5,
@@ -103,6 +157,11 @@ impl Layer {
                 );
                 draw_line(pos.0 - 10.0, THEIGHT, pos.0 + 10.0, THEIGHT, 4.0, GRAY);
                 draw_line(pos.0, THEIGHT - 10.0, pos.0, THEIGHT + 10.0, 4.0, GRAY);
+                if mouse_released {
+                    let mut frame = self.keyframes[0].clone();
+                    frame.time = time;
+                    self.keyframes.push(frame);
+                }
             }
         }
         pos.1 < 2.0 * THEIGHT

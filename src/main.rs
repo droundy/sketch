@@ -110,7 +110,7 @@ fn color_selector(color: &mut Color) -> bool {
 
 impl Drawing {
     fn frame_selector(&mut self) -> bool {
-        self.layers[self.current].frame_selector()
+        self.layers[self.current].frame_selector(&mut self.time)
     }
     fn layer_selector(&mut self) -> bool {
         const WIDTH: f32 = 50.0;
@@ -199,6 +199,7 @@ struct Drawing {
     current: usize,
     height: u16,
     width: u16,
+    time: f32,
     tool: Tool,
     layers: Vec<Layer>,
 }
@@ -207,6 +208,7 @@ struct Drawing {
 async fn main() {
     let mut old_pos: Option<Vec2> = None;
     let mut drawing = Drawing {
+        time: 0.0,
         current: 0,
         tool: Tool::BigPen,
         width: screen_width() as u16,
