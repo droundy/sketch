@@ -141,7 +141,7 @@ impl Drawing {
             WIDTH * 0.5,
             y + HEIGHT * 0.5 + 10.0,
             5.0,
-            random_color(),
+            WHITE,
         );
         draw_line(
             WIDTH * 0.5 - 10.0,
@@ -165,6 +165,7 @@ impl Drawing {
                 if is_mouse_button_pressed(MouseButton::Left) {
                     if y == self.layers.len() {
                         self.layers.push(Layer {
+                            texture: None,
                             bitmap: Image::gen_image_color(
                                 self.width,
                                 self.height,
@@ -204,6 +205,7 @@ impl Drawing {
 struct Layer {
     color: Color,
     bitmap: Image,
+    texture: Option<Texture2D>,
 }
 
 #[derive(PartialEq, Eq, Debug, Copy, Clone)]
@@ -232,8 +234,9 @@ async fn main() {
         width: image.width,
         height: image.height,
         layers: vec![Layer {
-            color: WHITE,
+            color: random_color(),
             bitmap: image,
+            texture: None,
         }],
     };
     loop {
@@ -242,8 +245,12 @@ async fn main() {
             return;
         }
 
-        for l in drawing.layers.iter() {
-            draw_texture(Texture2D::from_image(&l.bitmap), 0.0, 0.0, l.color);
+        for l in drawing.layers.iter_mut() {
+            if l.texture.is_none() {
+                l.texture = Some(Texture2D::from_image(&l.bitmap));
+            }
+            l.texture.unwrap().update(&l.bitmap);
+            draw_texture(l.texture.unwrap(), 0.0, 0.0, l.color);
         }
         let color_selected = color_selector(&mut drawing.layers[drawing.current].color);
         let layer_selected = drawing.layer_selector();
