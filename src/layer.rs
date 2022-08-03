@@ -2,10 +2,9 @@ use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 
 use macroquad::{
     prelude::{
-        draw_circle, draw_circle_lines, draw_line, draw_rectangle, draw_rectangle_lines,
-        draw_texture, is_key_pressed, is_mouse_button_down, is_mouse_button_pressed,
-        is_mouse_button_released, mouse_position, next_frame, screen_height, screen_width, Color,
-        Conf, Image, KeyCode, MouseButton, Texture2D, Vec2, BLACK, GRAY, WHITE,
+        draw_line, draw_rectangle, draw_rectangle_lines, is_mouse_button_down,
+        is_mouse_button_pressed, is_mouse_button_released, mouse_position, screen_height,
+        screen_width, Color, Image, MouseButton, Texture2D, Vec2, BLACK, GRAY, WHITE,
     },
     texture::{draw_texture_ex, DrawTextureParams},
 };
@@ -44,12 +43,44 @@ impl Layer {
         }
     }
     pub fn texture(&self, time: f32) -> Texture2D {
-        self.keyframes[0].texture.update(&self.keyframes[0].bitmap);
-        self.keyframes[0].texture
+        let k = self.closest_frame(time);
+        k.texture.update(&k.bitmap);
+        k.texture
+    }
+    fn closest_frame(&self, time: f32) -> &Bitmap {
+        let mut closest = 2.0;
+        for f in self.keyframes.iter() {
+            if (f.time - time).abs() < closest {
+                closest = (f.time - time).abs();
+            }
+        }
+        if let Some(k) = self
+            .keyframes
+            .iter()
+            .filter(|k| (k.time - time).abs() == closest)
+            .next()
+        {
+            k
+        } else {
+            &self.keyframes[0]
+        }
+    }
+    fn closest_frame_mut(&mut self, time: f32) -> &mut Bitmap {
+        let mut closest = 2.0;
+        for f in self.keyframes.iter() {
+            if (f.time - time).abs() < closest {
+                closest = (f.time - time).abs();
+            }
+        }
+        self.keyframes
+            .iter_mut()
+            .filter(|k| (k.time - time).abs() == closest)
+            .next()
+            .unwrap()
     }
 
     pub fn get_frame_data_mut(&mut self, time: f32) -> &mut [[u8; 4]] {
-        self.keyframes[0].bitmap.get_image_data_mut()
+        self.closest_frame_mut(time).bitmap.get_image_data_mut()
     }
 
     pub fn frame_selector(&mut self, now: &mut f32) -> bool {
@@ -73,10 +104,15 @@ impl Layer {
                     ..Default::default()
                 },
             );
-            draw_rectangle_lines(x, THEIGHT * 0.5, FRAME_WIDTH, THEIGHT, 2.0, WHITE);
+            let (thickness, color) = if frame.time == *now {
+                (4.0, WHITE)
+            } else {
+                (2.0, GRAY)
+            };
+            draw_rectangle_lines(x, THEIGHT * 0.5, FRAME_WIDTH, THEIGHT, thickness, color);
         }
         let pos = mouse_position();
-        if pos.1 <= 1.5 * THEIGHT {
+        if pos.1 <= 1.5 * THEIGHT && pos.0 >= TSTART + FRAME_WIDTH * 0.5 {
             let time = (pos.0 - FRAME_WIDTH * 0.5 - TSTART) / (tstop - TSTART);
             static AM_DRAGGING: AtomicBool = AtomicBool::new(false);
             static KEYFRAME: AtomicUsize = AtomicUsize::new(0);
@@ -107,7 +143,7 @@ impl Layer {
                     AM_DRAGGING.store(true, Ordering::Relaxed);
                     KEYFRAME.store(i, Ordering::Relaxed);
                 }
-            } else if am_dragging {
+            } else if am_dragging && self.keyframes.len() > drag_frame {
                 if mouse_down {
                     draw_rectangle(
                         pos.0 - FRAME_WIDTH * 0.5,
@@ -158,9 +194,24 @@ impl Layer {
                 draw_line(pos.0 - 10.0, THEIGHT, pos.0 + 10.0, THEIGHT, 4.0, GRAY);
                 draw_line(pos.0, THEIGHT - 10.0, pos.0, THEIGHT + 10.0, 4.0, GRAY);
                 if mouse_released {
-                    let mut frame = self.keyframes[0].clone();
-                    frame.time = time;
-                    self.keyframes.push(frame);
+                    let bytes = self
+                        .closest_frame(time)
+                        .bitmap
+                        .get_image_data()
+                        .iter()
+                        .flat_map(|d| d.into_iter())
+                        .copied()
+                        .collect();
+                    let bitmap = Image {
+                        bytes,
+                        width: self.keyframes[0].bitmap.width,
+                        height: self.keyframes[0].bitmap.height,
+                    };
+                    self.keyframes.push(Bitmap {
+                        time,
+                        texture: Texture2D::from_image(&bitmap),
+                        bitmap,
+                    });
                 }
             }
         }

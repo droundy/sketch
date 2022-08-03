@@ -1,13 +1,10 @@
-use std::collections::BTreeMap;
 use std::{f32::consts::PI, sync::atomic::AtomicBool};
 
 use macroquad::prelude::{
     draw_circle, draw_circle_lines, draw_line, draw_rectangle, draw_rectangle_lines, draw_texture,
     is_key_pressed, is_mouse_button_down, is_mouse_button_pressed, mouse_position, next_frame,
-    screen_height, screen_width, Color, Conf, Image, KeyCode, MouseButton, Texture2D, Vec2, BLACK,
-    GRAY, WHITE,
+    screen_height, screen_width, Color, Conf, KeyCode, MouseButton, Vec2, BLACK, GRAY, WHITE,
 };
-use macroquad::texture::{draw_texture_ex, DrawTextureParams};
 use macroquad::ui::root_ui;
 
 mod layer;
@@ -112,6 +109,9 @@ impl Drawing {
     fn frame_selector(&mut self) -> bool {
         self.layers[self.current].frame_selector(&mut self.time)
     }
+    fn get_frame_data_mut(&mut self) -> &mut [[u8; 4]] {
+        self.layers[self.current].get_frame_data_mut(self.time)
+    }
     fn layer_selector(&mut self) -> bool {
         const WIDTH: f32 = 50.0;
         const HEIGHT: f32 = 40.0;
@@ -163,7 +163,7 @@ impl Drawing {
             if x < WIDTH {
                 if is_mouse_button_pressed(MouseButton::Left) {
                     if y == self.layers.len() {
-                        self.layers.push(Layer::new(0.0));
+                        self.layers.push(Layer::new(self.time));
                         self.current = self.layers.len() - 1;
                         if self.tool == Tool::Eraser {
                             self.tool = Tool::BigPen;
@@ -216,6 +216,7 @@ async fn main() {
         layers: vec![Layer::new(0.0)],
     };
     let width = drawing.width as usize;
+    let height = drawing.height as usize;
     loop {
         // clear_background(WHITE);
         if is_key_pressed(KeyCode::Escape) {
@@ -223,7 +224,7 @@ async fn main() {
         }
 
         for l in drawing.layers.iter_mut() {
-            draw_texture(l.texture(0.0), 0.0, 0.0, l.color);
+            draw_texture(l.texture(drawing.time), 0.0, 0.0, l.color);
         }
         let color_selected = color_selector(&mut drawing.layers[drawing.current].color);
         let frame_selected = drawing.frame_selector();
@@ -242,7 +243,7 @@ async fn main() {
                 } else {
                     [255; 4]
                 };
-                let data = drawing.layers[drawing.current].get_frame_data_mut(0.0);
+                let data = drawing.get_frame_data_mut();
                 if let Some(old) = old_pos {
                     let parallel = (old - pos).normalize();
                     let orthog = Vec2::new(parallel.y, -parallel.x);
@@ -267,7 +268,7 @@ async fn main() {
                         std::cmp::min(pos.y as usize, old.y as usize),
                     ) - radius as usize;
                     let y_stop = std::cmp::min(
-                        drawing.height as usize - 1 - (radius as usize),
+                        height - 1 - (radius as usize),
                         std::cmp::max(pos.y as usize, old.y as usize),
                     ) + radius as usize
                         + 1;
@@ -288,10 +289,8 @@ async fn main() {
                     + radius as usize
                     + 1;
                 let y_start = std::cmp::max(radius as usize, pos.y as usize) - radius as usize;
-                let y_stop = std::cmp::min(
-                    drawing.height as usize - 1 - (radius as usize),
-                    pos.y as usize,
-                ) + radius as usize
+                let y_stop = std::cmp::min(height - 1 - (radius as usize), pos.y as usize)
+                    + radius as usize
                     + 1;
                 for x in x_start..x_stop {
                     for y in y_start..y_stop {
