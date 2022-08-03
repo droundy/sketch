@@ -6,6 +6,7 @@ use macroquad::prelude::{
     screen_height, screen_width, Color, Conf, Image, KeyCode, MouseButton, Texture2D, Vec2, BLACK,
     GRAY, WHITE,
 };
+use macroquad::texture::{draw_texture_ex, DrawTextureParams};
 use macroquad::ui::root_ui;
 
 fn conf() -> Conf {
@@ -113,6 +114,29 @@ fn color_selector(color: &mut Color) -> bool {
 }
 
 impl Drawing {
+    fn frame_selector(&mut self) -> bool {
+        const TSTART: f32 = 100.0;
+        const THEIGHT: f32 = 50.0;
+        const FRAME_WIDTH: f32 = 70.0;
+        let tstop: f32 = screen_width() - 2.0 * FRAME_WIDTH;
+        let t_width = tstop - TSTART;
+        draw_line(TSTART, THEIGHT, tstop, THEIGHT, 4.0, GRAY);
+        let time = 0.0;
+        let x = TSTART + time * t_width;
+        draw_rectangle(x, THEIGHT * 0.5, FRAME_WIDTH, THEIGHT, BLACK);
+        draw_texture_ex(
+            self.layers[self.current].texture.unwrap(),
+            x,
+            THEIGHT * 0.5,
+            self.layers[self.current].color,
+            DrawTextureParams {
+                dest_size: Some(Vec2::new(FRAME_WIDTH, THEIGHT)),
+                ..Default::default()
+            },
+        );
+        draw_rectangle_lines(x, THEIGHT * 0.5, FRAME_WIDTH, THEIGHT, 2.0, WHITE);
+        false
+    }
     fn layer_selector(&mut self) -> bool {
         const WIDTH: f32 = 50.0;
         const HEIGHT: f32 = 40.0;
@@ -253,8 +277,9 @@ async fn main() {
             draw_texture(l.texture.unwrap(), 0.0, 0.0, l.color);
         }
         let color_selected = color_selector(&mut drawing.layers[drawing.current].color);
+        let frame_selected = drawing.frame_selector();
         let layer_selected = drawing.layer_selector();
-        if !root_ui().is_mouse_captured() && !color_selected && !layer_selected {
+        if !root_ui().is_mouse_captured() && !color_selected && !layer_selected && !frame_selected {
             if is_mouse_button_down(MouseButton::Left) {
                 let pos = mouse_position();
                 let pos = Vec2::new(pos.0, pos.1);
