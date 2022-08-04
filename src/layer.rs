@@ -212,6 +212,7 @@ impl Layer {
                         texture: Texture2D::from_image(&bitmap),
                         bitmap,
                     });
+                    *now = time;
                 }
             }
         }
