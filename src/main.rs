@@ -5,6 +5,7 @@ use macroquad::prelude::{
     is_key_pressed, is_mouse_button_down, is_mouse_button_pressed, mouse_position, next_frame,
     screen_height, screen_width, Color, Conf, KeyCode, MouseButton, Vec2, BLACK, GRAY, WHITE,
 };
+use macroquad::shapes::draw_poly;
 use macroquad::ui::root_ui;
 
 mod layer;
@@ -112,6 +113,29 @@ impl Drawing {
     fn get_frame_data_mut(&mut self) -> &mut [[u8; 4]] {
         self.layers[self.current].get_frame_data_mut(self.time)
     }
+    fn animation_button(&mut self) -> bool {
+        const RADIUS: f32 = 16.0;
+        let center = Vec2::new(screen_width() - 80.0, 50.0);
+        if !self.am_animating {
+            draw_poly(center.x - 3.0, center.y, 3, RADIUS, 0.0, WHITE);
+        } else {
+            draw_rectangle(center.x - 10.0, center.y - 10.0, 20.0, 20.0, WHITE);
+        }
+        draw_rectangle_lines(center.x - 30.0, center.y - 25.0, 60.0, 50.0, 4.0, WHITE);
+        let (x, y) = mouse_position();
+        if is_mouse_button_pressed(MouseButton::Left)
+            && (x - center.x).abs() < 30.0
+            && (y - center.y).abs() < 25.0
+        {
+            self.am_animating = !self.am_animating;
+            if !self.am_animating {
+                self.time = self.layers[self.current].closest_time(self.time);
+            }
+            true
+        } else {
+            false
+        }
+    }
     fn layer_selector(&mut self) -> bool {
         const WIDTH: f32 = 50.0;
         const HEIGHT: f32 = 40.0;
@@ -196,6 +220,7 @@ enum Tool {
 }
 
 struct Drawing {
+    am_animating: bool,
     current: usize,
     height: u16,
     width: u16,
@@ -208,6 +233,7 @@ struct Drawing {
 async fn main() {
     let mut old_pos: Option<Vec2> = None;
     let mut drawing = Drawing {
+        am_animating: false,
         time: 0.0,
         current: 0,
         tool: Tool::BigPen,
@@ -222,14 +248,27 @@ async fn main() {
         if is_key_pressed(KeyCode::Escape) {
             return;
         }
+        if drawing.am_animating {
+            drawing.time += 0.01;
+            if drawing.time > 1.0 {
+                drawing.time = 0.0;
+            }
+        }
 
         for l in drawing.layers.iter_mut() {
             draw_texture(l.texture(drawing.time), 0.0, 0.0, l.color);
         }
+        let animation_button_selected = drawing.animation_button();
         let color_selected = color_selector(&mut drawing.layers[drawing.current].color);
         let frame_selected = drawing.frame_selector();
         let layer_selected = drawing.layer_selector();
-        if !root_ui().is_mouse_captured() && !color_selected && !layer_selected && !frame_selected {
+        if !root_ui().is_mouse_captured()
+            && !color_selected
+            && !layer_selected
+            && !frame_selected
+            && !animation_button_selected
+            && !drawing.am_animating
+        {
             if is_mouse_button_down(MouseButton::Left) {
                 let pos = mouse_position();
                 let pos = Vec2::new(pos.0, pos.1);

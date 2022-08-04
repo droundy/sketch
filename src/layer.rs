@@ -47,6 +47,9 @@ impl Layer {
         k.texture.update(&k.bitmap);
         k.texture
     }
+    pub fn closest_time(&self, time: f32) -> f32 {
+        self.closest_frame(time).time
+    }
     fn closest_frame(&self, time: f32) -> &Bitmap {
         let mut closest = 2.0;
         for f in self.keyframes.iter() {
@@ -90,6 +93,14 @@ impl Layer {
         let tstop: f32 = screen_width() - 2.0 * FRAME_WIDTH;
         let t_width = tstop - TSTART;
         draw_line(TSTART, THEIGHT, tstop, THEIGHT, 4.0, GRAY);
+        draw_line(
+            TSTART + *now * (tstop - TSTART),
+            THEIGHT * 0.5,
+            TSTART + *now * (tstop - TSTART),
+            THEIGHT * 1.5,
+            10.0,
+            WHITE,
+        );
 
         for frame in self.keyframes.iter() {
             let x = TSTART + frame.time * t_width;
@@ -112,12 +123,18 @@ impl Layer {
             draw_rectangle_lines(x, THEIGHT * 0.5, FRAME_WIDTH, THEIGHT, thickness, color);
         }
         let pos = mouse_position();
-        if pos.1 <= 1.5 * THEIGHT && pos.0 >= TSTART + FRAME_WIDTH * 0.5 {
-            let time = (pos.0 - FRAME_WIDTH * 0.5 - TSTART) / (tstop - TSTART);
-            static AM_DRAGGING: AtomicBool = AtomicBool::new(false);
-            static KEYFRAME: AtomicUsize = AtomicUsize::new(0);
-            let am_dragging = AM_DRAGGING.load(Ordering::Relaxed);
-            let drag_frame = KEYFRAME.load(Ordering::Relaxed);
+        static AM_DRAGGING: AtomicBool = AtomicBool::new(false);
+        static KEYFRAME: AtomicUsize = AtomicUsize::new(0);
+        let am_dragging = AM_DRAGGING.load(Ordering::Relaxed);
+        let drag_frame = KEYFRAME.load(Ordering::Relaxed);
+        if am_dragging
+            || (pos.1 <= 1.5 * THEIGHT && pos.0 >= TSTART + FRAME_WIDTH * 0.5 && pos.0 < tstop)
+        {
+            let time = clamp(
+                0.0,
+                1.0,
+                (pos.0 - FRAME_WIDTH * 0.5 - TSTART) / (tstop - TSTART),
+            );
             let mouse_released = is_mouse_button_released(MouseButton::Left);
             let mouse_pressed = is_mouse_button_pressed(MouseButton::Left);
             let mouse_down = is_mouse_button_down(MouseButton::Left);
@@ -144,17 +161,12 @@ impl Layer {
                     KEYFRAME.store(i, Ordering::Relaxed);
                 }
             } else if am_dragging && self.keyframes.len() > drag_frame {
+                let x = clamp(TSTART, tstop, pos.0) - FRAME_WIDTH * 0.5;
                 if mouse_down {
-                    draw_rectangle(
-                        pos.0 - FRAME_WIDTH * 0.5,
-                        THEIGHT * 0.5,
-                        FRAME_WIDTH,
-                        THEIGHT,
-                        BLACK,
-                    );
+                    draw_rectangle(x, THEIGHT * 0.5, FRAME_WIDTH, THEIGHT, BLACK);
                     draw_texture_ex(
                         self.keyframes[drag_frame].texture,
-                        pos.0 - FRAME_WIDTH * 0.5,
+                        x,
                         THEIGHT * 0.5,
                         self.color,
                         DrawTextureParams {
@@ -162,14 +174,7 @@ impl Layer {
                             ..Default::default()
                         },
                     );
-                    draw_rectangle_lines(
-                        pos.0 - FRAME_WIDTH * 0.5,
-                        THEIGHT * 0.5,
-                        FRAME_WIDTH,
-                        THEIGHT,
-                        2.0,
-                        GRAY,
-                    );
+                    draw_rectangle_lines(x, THEIGHT * 0.5, FRAME_WIDTH, THEIGHT, 2.0, GRAY);
                 } else {
                     self.keyframes[KEYFRAME.load(Ordering::Relaxed)].time = time;
                     *now = time;
@@ -216,7 +221,7 @@ impl Layer {
                 }
             }
         }
-        pos.1 < 2.0 * THEIGHT
+        pos.1 < 2.0 * THEIGHT || am_dragging
     }
 }
 
@@ -226,5 +231,15 @@ fn random_color() -> Color {
         g: rand::random(),
         b: rand::random(),
         a: 1.0,
+    }
+}
+
+fn clamp(min: f32, max: f32, val: f32) -> f32 {
+    if val < min {
+        min
+    } else if val > max {
+        max
+    } else {
+        val
     }
 }
