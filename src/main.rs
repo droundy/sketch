@@ -272,10 +272,10 @@ async fn main() {
             if is_mouse_button_down(MouseButton::Left) {
                 let pos = mouse_position();
                 let pos = Vec2::new(pos.0, pos.1);
-                let radius = if drawing.tool == Tool::LittlePen {
-                    2.0
-                } else {
-                    10.0
+                let radius = match drawing.tool {
+                    Tool::LittlePen => 2.0,
+                    Tool::BigPen => 10.0,
+                    Tool::Eraser => 20.0,
                 };
                 let drawn = if drawing.tool == Tool::Eraser {
                     [0; 4]
