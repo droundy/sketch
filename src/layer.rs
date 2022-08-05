@@ -45,6 +45,37 @@ fn shift_img(width: usize, output: &mut [f32], input: &[[u8; 4]], shift: Vec2, w
     }
 }
 
+fn smooth(width: usize, out: &mut [f32], inp: &[f32]) {
+    let mut kernel = Vec::new();
+    const SMEAR: isize = 20;
+    let mut total = 0.0;
+    for i in -SMEAR..SMEAR + 1 {
+        for j in -SMEAR..SMEAR + 1 {
+            let dist = ((i * i) as f32 + (j * j) as f32).sqrt();
+            if dist < SMEAR as f32 {
+                let w = (SMEAR as f32 - dist).powi(2);
+                kernel.push((i * width as isize + j, w));
+                total += w;
+            }
+        }
+    }
+    for t in kernel.iter_mut() {
+        t.1 /= total;
+    }
+    for (i, v) in inp.iter().enumerate() {
+        if *v > 0.0 {
+            for (off, w) in kernel.iter() {
+                let i_shifted = i as isize + off;
+                if let Some(x) = out.get_mut(i_shifted as usize) {
+                    *x += w * v;
+                } else {
+                    out[i] += w * v;
+                }
+            }
+        }
+    }
+}
+
 impl Layer {
     pub fn new(time: f32) -> Self {
         let bitmap = Image::gen_image_color(
@@ -109,13 +140,43 @@ impl Layer {
             center - after.center,
             w_after,
         );
+        let mut smoothed = vec![0.0; before.bitmap.get_image_data().len()];
+        smooth(width, &mut smoothed, &out);
+
+        let before_pixels = before
+            .bitmap
+            .get_image_data()
+            .iter()
+            .filter(|v| v[3] > 0)
+            .count();
+        let after_pixels = before
+            .bitmap
+            .get_image_data()
+            .iter()
+            .filter(|v| v[3] > 0)
+            .count();
+        let num_pixels =
+            (w_before * before_pixels as f32 + w_after * after_pixels as f32).round() as usize;
+
+        let mut lo = 0.0;
+        let mut hi = smoothed.len() as f32 * 255.0;
+        while hi - lo > 0.001 {
+            let mid = 0.5 * (hi + lo);
+            let count = smoothed.iter().filter(|v| **v > mid).count();
+            if count > num_pixels {
+                lo = mid;
+            } else {
+                hi = mid;
+            }
+        }
+
         for (o, i) in self
             .image
             .get_image_data_mut()
             .iter_mut()
-            .zip(out.into_iter())
+            .zip(smoothed.into_iter())
         {
-            *o = [255, 255, 255, i.round() as u8];
+            *o = [255, 255, 255, if i > lo { 255 } else { 0 }];
         }
         self.texture.update(&self.image);
         self.texture
