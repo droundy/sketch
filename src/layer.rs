@@ -1,4 +1,3 @@
-use num_complex::Complex;
 use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 
 use macroquad::{
@@ -10,14 +9,12 @@ use macroquad::{
     texture::{draw_texture_ex, DrawTextureParams},
 };
 
-use crate::fft::Ffts;
-
 #[derive(Clone)]
 struct Bitmap {
     time: f32,
     bitmap: Image,
     texture: Texture2D,
-    fft: Vec<Complex<f32>>,
+    center: Vec2,
 }
 
 pub struct Layer {
@@ -25,6 +22,27 @@ pub struct Layer {
     image: Image,
     texture: Texture2D,
     keyframes: Vec<Bitmap>,
+}
+
+fn shift_img(width: usize, output: &mut [[u8; 4]], input: &[[u8; 4]], shift: Vec2, w: f32) {
+    let offset = shift.x.round() + shift.y.round() * width as f32;
+    if offset < 0.0 {
+        let offset = (-offset) as usize;
+        for (i, o) in input[offset..]
+            .iter()
+            .zip(output[..input.len() - offset].iter_mut())
+        {
+            o[3] += (w * i[3] as f32).round() as u8;
+        }
+    } else {
+        let offset = offset as usize;
+        for (i, o) in input[..input.len() - offset]
+            .iter()
+            .zip(output[offset..].iter_mut())
+        {
+            o[3] += (w * i[3] as f32).round() as u8;
+        }
+    }
 }
 
 impl Layer {
@@ -45,58 +63,61 @@ impl Layer {
             texture: Texture2D::from_image(&bitmap),
             keyframes: vec![Bitmap {
                 time,
-                fft: vec![Complex::new(0.0, 0.0); bitmap.get_image_data().len()],
+                center: Vec2::ZERO,
                 texture: Texture2D::from_image(&bitmap),
                 bitmap,
             }],
         }
     }
-    pub fn handle_modified_bitmap(&mut self, ffts: &mut Ffts, time: f32) {
+    pub fn handle_modified_bitmap(&mut self, time: f32) {
         let k = self.closest_frame_mut(time);
+        let mut center = Vec2::ZERO;
+        let mut num = 0;
+        for (idx, b) in k.bitmap.get_image_data().iter().enumerate() {
+            if b[3] > 0 {
+                let i = idx % k.bitmap.width();
+                let j = idx / k.bitmap.width();
+                center += Vec2::new(i as f32, j as f32);
+                num += 1;
+            }
+        }
+        k.center = center / num as f32;
         k.texture.update(&k.bitmap);
-        k.fft = ffts.fft(k.bitmap.get_image_data());
     }
-    pub fn texture(&mut self, ffts: &mut Ffts, time: f32) -> Texture2D {
+    pub fn texture(&mut self, time: f32) -> Texture2D {
         let (before, after) = self.closest_frames(time);
-        let mut new_fft = before.fft.clone();
+        let width = before.bitmap.width();
         let mut w_before = 1.0;
         let mut w_after = 0.0;
         if after.time > before.time {
             w_before = (after.time - time) / (after.time - before.time);
             w_after = (time - before.time) / (after.time - before.time);
         }
-        for (i, v) in new_fft.iter_mut().enumerate() {
-            *v = (w_before * (*v) + w_after * after.fft[i]).exp();
-            // let (rb, tb) = v.to_polar();
-            // let (ra, ta) = after.fft[i].to_polar();
-            // // *v = Complex::from_polar(w_before * rb + w_after * ra, w_before * tb + w_after * ta);
-            // // *v = w_before * (*v) + w_after * after.fft[i];
-            // *v = Complex::from_polar(rb, w_before * tb + w_after * ta);
-
-            // let val = (w_before * v.ln() + w_after * after.fft[i].ln()).exp();
-            // if val == val {
-            //     // It is not a NaN
-            //     *v = val;
-            // } else {
-            //     *v = w_before * (*v) + w_after * after.fft[i];
-            // }
+        let mut out = vec![[255, 255, 255, 0]; before.bitmap.get_image_data().len()];
+        let center = w_before * before.center + w_after * after.center;
+        shift_img(
+            width,
+            &mut out,
+            before.bitmap.get_image_data(),
+            center - before.center,
+            w_before,
+        );
+        shift_img(
+            width,
+            &mut out,
+            after.bitmap.get_image_data(),
+            center - after.center,
+            w_after,
+        );
+        for (o, i) in self
+            .image
+            .get_image_data_mut()
+            .iter_mut()
+            .zip(out.into_iter())
+        {
+            *o = i;
         }
-        // let before_pixels = before
-        //     .bitmap
-        //     .get_image_data()
-        //     .iter()
-        //     .filter(|v| v[3] > 0)
-        //     .count();
-        // let after_pixels = before
-        //     .bitmap
-        //     .get_image_data()
-        //     .iter()
-        //     .filter(|v| v[3] > 0)
-        //     .count();
-        // let num_pixels =
-        //     (w_before * before_pixels as f32 + w_after * after_pixels as f32).round() as usize;
-        ffts.ifft(self.image.get_image_data_mut(), new_fft);
-        self.texture.update(&mut self.image);
+        self.texture.update(&self.image);
         self.texture
         // let k = self.closest_frame(time);
         // k.texture
@@ -267,25 +288,15 @@ impl Layer {
                 draw_line(pos.0 - 10.0, THEIGHT, pos.0 + 10.0, THEIGHT, 4.0, GRAY);
                 draw_line(pos.0, THEIGHT - 10.0, pos.0, THEIGHT + 10.0, 4.0, GRAY);
                 if mouse_released {
-                    let bytes = self
-                        .closest_frame(time)
-                        .bitmap
-                        .get_image_data()
-                        .iter()
-                        .flat_map(|d| d.into_iter())
-                        .copied()
-                        .collect();
-                    let bitmap = Image {
-                        bytes,
-                        width: self.keyframes[0].bitmap.width,
-                        height: self.keyframes[0].bitmap.height,
-                    };
+                    self.texture(time);
+                    let bitmap = self.image.clone();
                     self.keyframes.push(Bitmap {
                         time,
-                        fft: vec![Complex::new(0.0, 0.0); bitmap.get_image_data().len()],
+                        center: Vec2::ZERO,
                         texture: Texture2D::from_image(&bitmap),
                         bitmap,
                     });
+                    self.handle_modified_bitmap(time);
                     *now = time;
                 }
             }

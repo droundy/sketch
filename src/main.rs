@@ -1,6 +1,5 @@
 use std::{f32::consts::PI, sync::atomic::AtomicBool};
 
-use fft::Ffts;
 use macroquad::prelude::{
     draw_circle, draw_circle_lines, draw_line, draw_rectangle, draw_rectangle_lines, draw_texture,
     is_key_pressed, is_mouse_button_down, is_mouse_button_pressed, mouse_position, next_frame,
@@ -9,7 +8,6 @@ use macroquad::prelude::{
 use macroquad::shapes::draw_poly;
 use macroquad::ui::root_ui;
 
-mod fft;
 mod layer;
 use layer::Layer;
 
@@ -115,8 +113,8 @@ impl Drawing {
     fn get_frame_data_mut(&mut self) -> &mut [[u8; 4]] {
         self.layers[self.current].get_frame_data_mut(self.time)
     }
-    fn handle_modified_bitmap(&mut self, ffts: &mut Ffts) {
-        self.layers[self.current].handle_modified_bitmap(ffts, self.time);
+    fn handle_modified_bitmap(&mut self) {
+        self.layers[self.current].handle_modified_bitmap(self.time);
     }
     fn animation_button(&mut self) -> bool {
         const RADIUS: f32 = 16.0;
@@ -248,7 +246,6 @@ async fn main() {
     };
     let width = drawing.width as usize;
     let height = drawing.height as usize;
-    let mut ffts = Ffts::new(width, height);
     loop {
         // clear_background(WHITE);
         if is_key_pressed(KeyCode::Escape) {
@@ -262,7 +259,7 @@ async fn main() {
         }
 
         for l in drawing.layers.iter_mut() {
-            draw_texture(l.texture(&mut ffts, drawing.time), 0.0, 0.0, l.color);
+            draw_texture(l.texture(drawing.time), 0.0, 0.0, l.color);
         }
         let animation_button_selected = drawing.animation_button();
         let color_selected = color_selector(&mut drawing.layers[drawing.current].color);
@@ -346,7 +343,7 @@ async fn main() {
                         old_pos = Some(pos);
                     }
                 }
-                drawing.handle_modified_bitmap(&mut ffts);
+                drawing.handle_modified_bitmap();
             } else {
                 old_pos = None;
             }
