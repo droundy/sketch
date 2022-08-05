@@ -24,7 +24,7 @@ pub struct Layer {
     keyframes: Vec<Bitmap>,
 }
 
-fn shift_img(width: usize, output: &mut [[u8; 4]], input: &[[u8; 4]], shift: Vec2, w: f32) {
+fn shift_img(width: usize, output: &mut [f32], input: &[[u8; 4]], shift: Vec2, w: f32) {
     let offset = shift.x.round() + shift.y.round() * width as f32;
     if offset < 0.0 {
         let offset = (-offset) as usize;
@@ -32,7 +32,7 @@ fn shift_img(width: usize, output: &mut [[u8; 4]], input: &[[u8; 4]], shift: Vec
             .iter()
             .zip(output[..input.len() - offset].iter_mut())
         {
-            o[3] += (w * i[3] as f32).round() as u8;
+            *o += w * i[3] as f32;
         }
     } else {
         let offset = offset as usize;
@@ -40,7 +40,7 @@ fn shift_img(width: usize, output: &mut [[u8; 4]], input: &[[u8; 4]], shift: Vec
             .iter()
             .zip(output[offset..].iter_mut())
         {
-            o[3] += (w * i[3] as f32).round() as u8;
+            *o += w * i[3] as f32;
         }
     }
 }
@@ -93,7 +93,7 @@ impl Layer {
             w_before = (after.time - time) / (after.time - before.time);
             w_after = (time - before.time) / (after.time - before.time);
         }
-        let mut out = vec![[255, 255, 255, 0]; before.bitmap.get_image_data().len()];
+        let mut out = vec![0.0; before.bitmap.get_image_data().len()];
         let center = w_before * before.center + w_after * after.center;
         shift_img(
             width,
@@ -115,7 +115,7 @@ impl Layer {
             .iter_mut()
             .zip(out.into_iter())
         {
-            *o = i;
+            *o = [255, 255, 255, i.round() as u8];
         }
         self.texture.update(&self.image);
         self.texture
