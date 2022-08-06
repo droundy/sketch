@@ -1,5 +1,5 @@
 use std::{
-    collections::HashMap,
+    collections::{HashMap, HashSet},
     sync::atomic::{AtomicBool, AtomicUsize, Ordering},
 };
 
@@ -74,10 +74,74 @@ impl Layer {
         let (before, after) = self.closest_frames(time);
         if before == after {
             self.keyframes[before].texture
-        } else if let Some(connections) = self.connections.get(&(before, after)) {
-            todo!()
         } else {
-            todo!()
+            let w = self.image.width();
+            if self.connections.get(&(before, after)).is_none() {
+                let mut connections = Vec::new();
+                let mut b = HashSet::new();
+                let mut a = HashSet::new();
+                for (i, _) in self.keyframes[before]
+                    .bitmap
+                    .get_image_data()
+                    .iter()
+                    .enumerate()
+                    .filter(|(_, v)| v[3] == 255)
+                {
+                    b.insert((i % w, i / w));
+                }
+                for (i, _) in self.keyframes[after]
+                    .bitmap
+                    .get_image_data()
+                    .iter()
+                    .enumerate()
+                    .filter(|(_, v)| v[3] == 255)
+                {
+                    a.insert((i % w, i / w));
+                }
+                let mut b_all_done = false;
+                let mut b_unchosen: Vec<_> = b.iter().copied().collect();
+                for &(ax, ay) in a.iter() {
+                    if let Some((bx, by)) = b_unchosen.pop() {
+                        connections.push((bx + by * w, ax + ay * w));
+                    } else {
+                        b_all_done = true;
+                        b_unchosen = b.iter().copied().collect();
+                    }
+                }
+                if !b_all_done {
+                    for &(ax, ay) in a.iter() {
+                        if let Some((bx, by)) = b_unchosen.pop() {
+                            connections.push((bx + by * w, ax + ay * w));
+                        } else {
+                            break;
+                        }
+                    }
+                }
+                self.connections.insert((before, after), connections);
+            }
+            if let Some(connections) = self.connections.get(&(before, after)) {
+                let w_before = (self.keyframes[after].time - time)
+                    / (self.keyframes[after].time - self.keyframes[before].time);
+                let w_after = (time - self.keyframes[before].time)
+                    / (self.keyframes[after].time - self.keyframes[before].time);
+                for v in self.image.get_image_data_mut().iter_mut() {
+                    *v = [255, 255, 255, 0];
+                }
+                for &(b, a) in connections.iter() {
+                    let bx = b % self.image.width();
+                    let by = b / self.image.width();
+                    let ax = a % self.image.width();
+                    let ay = a / self.image.width();
+                    let x = w_before * bx as f32 + w_after * ax as f32;
+                    let y = w_before * by as f32 + w_after * ay as f32;
+                    let idx = x.round() as usize + (y.round() as usize) * self.image.width();
+                    self.image.get_image_data_mut()[idx][3] = 255;
+                }
+                self.texture.update(&self.image);
+                self.texture
+            } else {
+                unreachable!()
+            }
         }
     }
     pub fn closest_time(&self, time: f32) -> f32 {
@@ -87,17 +151,23 @@ impl Layer {
         let mut above = 0;
         let mut below = 0;
 
-        for (i, f) in self.keyframes[1..].iter().enumerate() {
+        for (i, f) in self.keyframes.iter().enumerate() {
             if f.time >= time
-                && (f.time < self.keyframes[above].time || self.keyframes[above].time < time)
+                && (f.time <= self.keyframes[above].time || self.keyframes[above].time < time)
             {
                 above = i;
             }
             if f.time <= time
-                && (f.time > self.keyframes[below].time || self.keyframes[below].time > time)
+                && (f.time >= self.keyframes[below].time || self.keyframes[below].time > time)
             {
                 below = i;
             }
+        }
+        if self.keyframes[below].time > time {
+            below = above;
+        }
+        if self.keyframes[above].time < time {
+            above = below;
         }
         (below, above)
     }
