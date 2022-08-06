@@ -1,4 +1,7 @@
-use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
+use std::{
+    collections::HashMap,
+    sync::atomic::{AtomicBool, AtomicUsize, Ordering},
+};
 
 use macroquad::{
     prelude::{
@@ -22,58 +25,7 @@ pub struct Layer {
     image: Image,
     texture: Texture2D,
     keyframes: Vec<Bitmap>,
-}
-
-fn shift_img(width: usize, output: &mut [f32], input: &[[u8; 4]], shift: Vec2, w: f32) {
-    let offset = shift.x.round() + shift.y.round() * width as f32;
-    if offset < 0.0 {
-        let offset = (-offset) as usize;
-        for (i, o) in input[offset..]
-            .iter()
-            .zip(output[..input.len() - offset].iter_mut())
-        {
-            *o += w * i[3] as f32;
-        }
-    } else {
-        let offset = offset as usize;
-        for (i, o) in input[..input.len() - offset]
-            .iter()
-            .zip(output[offset..].iter_mut())
-        {
-            *o += w * i[3] as f32;
-        }
-    }
-}
-
-fn smooth(width: usize, out: &mut [f32], inp: &[f32]) {
-    let mut kernel = Vec::new();
-    const SMEAR: isize = 20;
-    let mut total = 0.0;
-    for i in -SMEAR..SMEAR + 1 {
-        for j in -SMEAR..SMEAR + 1 {
-            let dist = ((i * i) as f32 + (j * j) as f32).sqrt();
-            if dist < SMEAR as f32 {
-                let w = (SMEAR as f32 - dist).powi(2);
-                kernel.push((i * width as isize + j, w));
-                total += w;
-            }
-        }
-    }
-    for t in kernel.iter_mut() {
-        t.1 /= total;
-    }
-    for (i, v) in inp.iter().enumerate() {
-        if *v > 0.0 {
-            for (off, w) in kernel.iter() {
-                let i_shifted = i as isize + off;
-                if let Some(x) = out.get_mut(i_shifted as usize) {
-                    *x += w * v;
-                } else {
-                    out[i] += w * v;
-                }
-            }
-        }
-    }
+    connections: HashMap<(usize, usize), Vec<(usize, usize)>>,
 }
 
 impl Layer {
@@ -98,10 +50,13 @@ impl Layer {
                 texture: Texture2D::from_image(&bitmap),
                 bitmap,
             }],
+            connections: HashMap::new(),
         }
     }
     pub fn handle_modified_bitmap(&mut self, time: f32) {
-        let k = self.closest_frame_mut(time);
+        let which = self.closest_frame(time);
+        self.connections.retain(|k, _| k.0 != which && k.1 != which);
+        let k = &mut self.keyframes[which];
         let mut center = Vec2::ZERO;
         let mut num = 0;
         for (idx, b) in k.bitmap.get_image_data().iter().enumerate() {
@@ -117,123 +72,58 @@ impl Layer {
     }
     pub fn texture(&mut self, time: f32) -> Texture2D {
         let (before, after) = self.closest_frames(time);
-        let width = before.bitmap.width();
-        let mut w_before = 1.0;
-        let mut w_after = 0.0;
-        if after.time > before.time {
-            w_before = (after.time - time) / (after.time - before.time);
-            w_after = (time - before.time) / (after.time - before.time);
+        if before == after {
+            self.keyframes[before].texture
+        } else if let Some(connections) = self.connections.get(&(before, after)) {
+            todo!()
+        } else {
+            todo!()
         }
-        let mut out = vec![0.0; before.bitmap.get_image_data().len()];
-        let center = w_before * before.center + w_after * after.center;
-        shift_img(
-            width,
-            &mut out,
-            before.bitmap.get_image_data(),
-            center - before.center,
-            w_before,
-        );
-        shift_img(
-            width,
-            &mut out,
-            after.bitmap.get_image_data(),
-            center - after.center,
-            w_after,
-        );
-        let mut smoothed = vec![0.0; before.bitmap.get_image_data().len()];
-        smooth(width, &mut smoothed, &out);
-
-        let before_pixels = before
-            .bitmap
-            .get_image_data()
-            .iter()
-            .filter(|v| v[3] > 0)
-            .count();
-        let after_pixels = before
-            .bitmap
-            .get_image_data()
-            .iter()
-            .filter(|v| v[3] > 0)
-            .count();
-        let num_pixels =
-            (w_before * before_pixels as f32 + w_after * after_pixels as f32).round() as usize;
-
-        let mut lo = 0.0;
-        let mut hi = smoothed.len() as f32 * 255.0;
-        while hi - lo > 0.001 {
-            let mid = 0.5 * (hi + lo);
-            let count = smoothed.iter().filter(|v| **v > mid).count();
-            if count > num_pixels {
-                lo = mid;
-            } else {
-                hi = mid;
-            }
-        }
-
-        for (o, i) in self
-            .image
-            .get_image_data_mut()
-            .iter_mut()
-            .zip(smoothed.into_iter())
-        {
-            *o = [255, 255, 255, if i > lo { 255 } else { 0 }];
-        }
-        self.texture.update(&self.image);
-        self.texture
-        // let k = self.closest_frame(time);
-        // k.texture
     }
     pub fn closest_time(&self, time: f32) -> f32 {
-        self.closest_frame(time).time
+        self.keyframes[self.closest_frame(time)].time
     }
-    fn closest_frames(&self, time: f32) -> (&Bitmap, &Bitmap) {
-        let mut above = &self.keyframes[0];
-        let mut below = &self.keyframes[0];
+    fn closest_frames(&self, time: f32) -> (usize, usize) {
+        let mut above = 0;
+        let mut below = 0;
 
-        for f in self.keyframes.iter() {
-            if f.time >= time && (f.time < above.time || above.time < time) {
-                above = f;
+        for (i, f) in self.keyframes[1..].iter().enumerate() {
+            if f.time >= time
+                && (f.time < self.keyframes[above].time || self.keyframes[above].time < time)
+            {
+                above = i;
             }
-            if f.time <= time && (f.time > below.time || below.time > time) {
-                below = f;
+            if f.time <= time
+                && (f.time > self.keyframes[below].time || self.keyframes[below].time > time)
+            {
+                below = i;
             }
         }
         (below, above)
     }
-    fn closest_frame(&self, time: f32) -> &Bitmap {
+    fn closest_frame(&self, time: f32) -> usize {
         let mut closest = 2.0;
         for f in self.keyframes.iter() {
             if (f.time - time).abs() < closest {
                 closest = (f.time - time).abs();
             }
         }
-        if let Some(k) = self
+        if let Some((i, _)) = self
             .keyframes
             .iter()
-            .filter(|k| (k.time - time).abs() == closest)
+            .enumerate()
+            .filter(|(_, k)| (k.time - time).abs() == closest)
             .next()
         {
-            k
+            i
         } else {
-            &self.keyframes[0]
+            0
         }
-    }
-    fn closest_frame_mut(&mut self, time: f32) -> &mut Bitmap {
-        let mut closest = 2.0;
-        for f in self.keyframes.iter() {
-            if (f.time - time).abs() < closest {
-                closest = (f.time - time).abs();
-            }
-        }
-        self.keyframes
-            .iter_mut()
-            .filter(|k| (k.time - time).abs() == closest)
-            .next()
-            .unwrap()
     }
 
     pub fn get_frame_data_mut(&mut self, time: f32) -> &mut [[u8; 4]] {
-        self.closest_frame_mut(time).bitmap.get_image_data_mut()
+        let i = self.closest_frame(time);
+        self.keyframes[i].bitmap.get_image_data_mut()
     }
 
     pub fn frame_selector(&mut self, now: &mut f32) -> bool {
