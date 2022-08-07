@@ -142,6 +142,7 @@ impl Drawing {
     fn layer_selector(&mut self) -> bool {
         const WIDTH: f32 = 50.0;
         const HEIGHT: f32 = 40.0;
+        const NUM_TOOLS: usize = 3;
         fn outline(y: f32, selected: bool) {
             draw_rectangle_lines(0.0, y, WIDTH, HEIGHT, 5.0, BLACK);
             draw_rectangle_lines(
@@ -154,11 +155,11 @@ impl Drawing {
             );
         }
         for (i, l) in self.layers.iter().enumerate() {
-            let y = i as f32 * HEIGHT;
+            let y = (NUM_TOOLS + 1 + i) as f32 * HEIGHT;
             draw_rectangle(0.0, y, WIDTH, HEIGHT, l.color);
             outline(y, i == self.current);
         }
-        let y = self.layers.len() as f32 * HEIGHT;
+        let y = (NUM_TOOLS + 1 + self.layers.len()) as f32 * HEIGHT;
         draw_rectangle(0.0, y, WIDTH, HEIGHT, BLACK);
         outline(y, false);
         draw_line(
@@ -177,7 +178,7 @@ impl Drawing {
             5.0,
             WHITE,
         );
-        let y = y + 2.0 * HEIGHT;
+        let y = 0.0;
         outline(y, self.tool == Tool::BigPen);
         draw_circle(WIDTH * 0.5, y + HEIGHT * 0.5, 10.0, WHITE);
         outline(y + HEIGHT, self.tool == Tool::LittlePen);
@@ -189,22 +190,22 @@ impl Drawing {
             let y = (y / HEIGHT) as usize;
             if x < WIDTH {
                 if is_mouse_button_pressed(MouseButton::Left) {
-                    if y == self.layers.len() {
+                    if y == NUM_TOOLS + 1 + self.layers.len() {
                         self.layers.push(Layer::new(self.time));
                         self.current = self.layers.len() - 1;
                         if self.tool == Tool::Eraser {
                             self.tool = Tool::BigPen;
                         }
-                    } else if y < self.layers.len() {
-                        self.current = y;
+                    } else if y > NUM_TOOLS && y < NUM_TOOLS + 1 + self.layers.len() {
+                        self.current = y - NUM_TOOLS - 1;
                         if self.tool == Tool::Eraser {
                             self.tool = Tool::BigPen;
                         }
-                    } else if y == self.layers.len() + 2 {
+                    } else if y == 0 {
                         self.tool = Tool::BigPen;
-                    } else if y == self.layers.len() + 3 {
+                    } else if y == 1 {
                         self.tool = Tool::LittlePen;
-                    } else if y == self.layers.len() + 4 {
+                    } else if y == 2 {
                         self.tool = Tool::Eraser;
                     }
                 }
