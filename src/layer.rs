@@ -1,5 +1,5 @@
 use std::{
-    collections::{HashMap, HashSet},
+    collections::HashMap,
     sync::atomic::{AtomicBool, AtomicUsize, Ordering},
 };
 
@@ -11,6 +11,7 @@ use macroquad::{
     },
     texture::{draw_texture_ex, DrawTextureParams},
 };
+use rand::seq::SliceRandom;
 
 #[derive(Clone)]
 struct Bitmap {
@@ -26,6 +27,23 @@ pub struct Layer {
     texture: Texture2D,
     keyframes: Vec<Bitmap>,
     connections: HashMap<(usize, usize), Vec<(usize, usize)>>,
+}
+
+fn swap_if_improvement(w: usize, connections: &mut [(usize, usize)], i: usize, j: usize) -> bool {
+    let i_before = connections[i].0;
+    let i_after = connections[i].1;
+    let j_before = connections[j].0;
+    let j_after = connections[j].1;
+    let dx_before = (i_before % w) as isize - (j_before % w) as isize;
+    let dy_before = (i_before / w) as isize - (j_before / w) as isize;
+    let dx_after = (i_after % w) as isize - (j_after % w) as isize;
+    let dy_after = (i_after / w) as isize - (j_after / w) as isize;
+    let before_after_dot = dx_before * dx_after + dy_before * dy_after;
+    if before_after_dot < 0 {
+        connections[i] = (i_before, j_after);
+        connections[j] = (j_before, i_after);
+    }
+    before_after_dot < 0
 }
 
 impl Layer {
@@ -78,31 +96,34 @@ impl Layer {
             let w = self.image.width();
             if self.connections.get(&(before, after)).is_none() {
                 let mut connections = Vec::new();
-                let mut b = HashSet::new();
-                let mut a = HashSet::new();
-                for (i, _) in self.keyframes[before]
+                let b = self.keyframes[before]
                     .bitmap
                     .get_image_data()
                     .iter()
                     .enumerate()
                     .filter(|(_, v)| v[3] == 255)
-                {
-                    b.insert((i % w, i / w));
-                }
-                for (i, _) in self.keyframes[after]
+                    .map(|(i, _)| (i % w, i / w))
+                    .collect::<Vec<_>>();
+                let a = self.keyframes[after]
                     .bitmap
                     .get_image_data()
                     .iter()
                     .enumerate()
                     .filter(|(_, v)| v[3] == 255)
-                {
-                    a.insert((i % w, i / w));
-                }
+                    .map(|(i, _)| (i % w, i / w))
+                    .collect::<Vec<_>>();
                 let mut b_all_done = false;
-                let mut b_unchosen: Vec<_> = b.iter().copied().collect();
+                let mut b_unchosen: Vec<_> = b.iter().rev().copied().collect();
+                b_unchosen.shuffle(&mut rand::thread_rng());
                 for &(ax, ay) in a.iter() {
                     if let Some((bx, by)) = b_unchosen.pop() {
                         connections.push((bx + by * w, ax + ay * w));
+                        let mut j = connections.len() - 1;
+                        for i in 0..connections.len() - 1 {
+                            if swap_if_improvement(w, &mut connections, i, j) {
+                                j = i;
+                            }
+                        }
                     } else {
                         b_all_done = true;
                         b_unchosen = b.iter().copied().collect();
@@ -112,6 +133,12 @@ impl Layer {
                     for &(ax, ay) in a.iter() {
                         if let Some((bx, by)) = b_unchosen.pop() {
                             connections.push((bx + by * w, ax + ay * w));
+                            let mut j = connections.len() - 1;
+                            for i in 0..connections.len() - 1 {
+                                if swap_if_improvement(w, &mut connections, i, j) {
+                                    j = i;
+                                }
+                            }
                         } else {
                             break;
                         }
@@ -119,7 +146,21 @@ impl Layer {
                 }
                 self.connections.insert((before, after), connections);
             }
-            if let Some(connections) = self.connections.get(&(before, after)) {
+            if let Some(connections) = self.connections.get_mut(&(before, after)) {
+                let mut num_improvements = 1;
+                while num_improvements > 0 && !connections.is_empty() {
+                    for _ in 0..connections.len() {
+                        let i = rand::random::<usize>() % connections.len();
+                        let j = rand::random::<usize>() % connections.len();
+                        let worked = swap_if_improvement(w, connections, i, j);
+                        num_improvements += worked as usize;
+                        if worked {
+                            assert!(!swap_if_improvement(w, connections, i, j));
+                        }
+                    }
+                    num_improvements = 0;
+                }
+
                 let w_before = (self.keyframes[after].time - time)
                     / (self.keyframes[after].time - self.keyframes[before].time);
                 let w_after = (time - self.keyframes[before].time)
@@ -310,7 +351,12 @@ impl Layer {
                 draw_line(pos.0, THEIGHT - 10.0, pos.0, THEIGHT + 10.0, 4.0, GRAY);
                 if mouse_released {
                     self.texture(time);
-                    let bitmap = self.image.clone();
+                    let mut bitmap = self.image.clone();
+                    let times = self.closest_frames(time);
+                    if times.0 == times.1 {
+                        // In this case, self.image didn't get updated!
+                        bitmap = self.keyframes[times.0].bitmap.clone();
+                    }
                     self.keyframes.push(Bitmap {
                         time,
                         center: Vec2::ZERO,
