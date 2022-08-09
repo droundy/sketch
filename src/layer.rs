@@ -1,5 +1,5 @@
 use std::{
-    collections::HashMap,
+    collections::{HashMap, HashSet, VecDeque},
     sync::atomic::{AtomicBool, AtomicUsize, Ordering},
 };
 
@@ -11,7 +11,6 @@ use macroquad::{
     },
     texture::{draw_texture_ex, DrawTextureParams},
 };
-use rand::seq::SliceRandom;
 
 #[derive(Clone)]
 struct Bitmap {
@@ -29,21 +28,74 @@ pub struct Layer {
     connections: HashMap<(usize, usize), Vec<(usize, usize)>>,
 }
 
-fn swap_if_improvement(w: usize, connections: &mut [(usize, usize)], i: usize, j: usize) -> bool {
-    let i_before = connections[i].0;
-    let i_after = connections[i].1;
-    let j_before = connections[j].0;
-    let j_after = connections[j].1;
-    let dx_before = (i_before % w) as isize - (j_before % w) as isize;
-    let dy_before = (i_before / w) as isize - (j_before / w) as isize;
-    let dx_after = (i_after % w) as isize - (j_after % w) as isize;
-    let dy_after = (i_after / w) as isize - (j_after / w) as isize;
-    let before_after_dot = dx_before * dx_after + dy_before * dy_after;
-    if before_after_dot < 0 {
-        connections[i] = (i_before, j_after);
-        connections[j] = (j_before, i_after);
+fn find_top(w: usize, pixels: &[bool]) -> impl Iterator<Item = usize> {
+    let mut points = Vec::new();
+    for i in 0..pixels.len() / w {
+        for j in 0..w {
+            let idx = i * w + j;
+            if pixels[idx] {
+                points.push(idx);
+            }
+        }
+        if !points.is_empty() {
+            break;
+        }
     }
-    before_after_dot < 0
+    points.into_iter()
+}
+
+fn find_left(w: usize, pixels: &[bool]) -> impl Iterator<Item = usize> {
+    let mut points = Vec::new();
+    for j in 0..w {
+        for i in 0..pixels.len() / w {
+            let idx = i * w + j;
+            if pixels[idx] {
+                points.push(idx);
+            }
+        }
+        if !points.is_empty() {
+            break;
+        }
+    }
+    points.into_iter()
+}
+
+fn rank_pixels(
+    w: usize,
+    mut pixels: Vec<bool>,
+    mut todo: VecDeque<(usize, i64)>,
+) -> HashMap<usize, f64> {
+    for (i, _) in todo.iter() {
+        pixels[*i] = false;
+    }
+    let mut out = HashMap::new();
+    let mut max_rank = 0;
+    while let Some((p, rank)) = todo.pop_front() {
+        out.insert(p, rank);
+        max_rank = rank;
+        let x = p % w;
+        let y = p / w;
+        if x > 0 && pixels[p - 1] {
+            todo.push_back((p - 1, rank + 1));
+            pixels[p - 1] = false;
+        }
+        if x < w - 1 && pixels[p + 1] {
+            todo.push_back((p + 1, rank + 1));
+            pixels[p + 1] = false;
+        }
+        if y > 0 && pixels[p - w] {
+            todo.push_back((p - w, rank + 1));
+            pixels[p - w] = false;
+        }
+        if y < w - 1 && pixels[p + w] {
+            todo.push_back((p + w, rank + 1));
+            pixels[p + w] = false;
+        }
+    }
+    let max_rank = max_rank as f64;
+    out.into_iter()
+        .map(|(k, v)| (k, v as f64 / max_rank))
+        .collect()
 }
 
 impl Layer {
@@ -93,74 +145,94 @@ impl Layer {
         if before == after {
             self.keyframes[before].texture
         } else {
-            let w = self.image.width();
             if self.connections.get(&(before, after)).is_none() {
                 let mut connections = Vec::new();
-                let b = self.keyframes[before]
+                let w = self.image.width();
+
+                let mut before_pixels = self.keyframes[before]
                     .bitmap
                     .get_image_data()
                     .iter()
-                    .enumerate()
-                    .filter(|(_, v)| v[3] == 255)
-                    .map(|(i, _)| (i % w, i / w))
+                    .map(|x| x[3] > 0)
                     .collect::<Vec<_>>();
-                let a = self.keyframes[after]
+                let mut after_pixels = self.keyframes[after]
                     .bitmap
                     .get_image_data()
                     .iter()
-                    .enumerate()
-                    .filter(|(_, v)| v[3] == 255)
-                    .map(|(i, _)| (i % w, i / w))
+                    .map(|x| x[3] > 0)
                     .collect::<Vec<_>>();
-                let mut b_all_done = false;
-                let mut b_unchosen: Vec<_> = b.iter().rev().copied().collect();
-                b_unchosen.shuffle(&mut rand::thread_rng());
-                for &(ax, ay) in a.iter() {
-                    if let Some((bx, by)) = b_unchosen.pop() {
-                        connections.push((bx + by * w, ax + ay * w));
-                        let mut j = connections.len() - 1;
-                        for i in 0..connections.len() - 1 {
-                            if swap_if_improvement(w, &mut connections, i, j) {
-                                j = i;
+
+                while after_pixels.iter().any(|&p| p) && before_pixels.iter().any(|&p| p) {
+                    let pixels = before_pixels.clone();
+                    let todo: VecDeque<(usize, i64)> =
+                        find_top(w, &pixels).map(|p| (p, 0)).collect();
+                    let before_top_rankings = rank_pixels(w, pixels, todo);
+                    let mut pixels = vec![false; before_pixels.len()];
+                    for &i in before_top_rankings.keys() {
+                        pixels[i] = true;
+                    }
+                    let todo: VecDeque<(usize, i64)> =
+                        find_left(w, &pixels).map(|p| (p, 0)).collect();
+                    let before_left_rankings = rank_pixels(w, pixels, todo);
+
+                    let pixels = after_pixels.clone();
+                    let todo: VecDeque<(usize, i64)> =
+                        find_top(w, &pixels).map(|p| (p, 0)).collect();
+                    let after_top_rankings = rank_pixels(w, pixels, todo);
+                    let mut pixels = vec![false; after_pixels.len()];
+                    for &i in after_top_rankings.keys() {
+                        pixels[i] = true;
+                    }
+                    let todo: VecDeque<(usize, i64)> =
+                        find_left(w, &pixels).map(|p| (p, 0)).collect();
+                    let after_left_rankings = rank_pixels(w, pixels, todo);
+
+                    assert_eq!(after_top_rankings.len(), after_left_rankings.len());
+                    assert_eq!(before_top_rankings.len(), before_left_rankings.len());
+                    assert_eq!(
+                        after_top_rankings.keys().copied().collect::<HashSet<_>>(),
+                        after_left_rankings.keys().copied().collect::<HashSet<_>>()
+                    );
+                    assert_eq!(
+                        before_top_rankings.keys().copied().collect::<HashSet<_>>(),
+                        before_left_rankings.keys().copied().collect::<HashSet<_>>()
+                    );
+                    for (&b, &t) in before_top_rankings.iter() {
+                        before_pixels[b] = false;
+                        let l = before_left_rankings[&b];
+                        let mut best = 0;
+                        let mut best_dist2 = 1e300;
+                        for (&a, &ta) in after_top_rankings.iter() {
+                            let la = after_left_rankings[&a];
+                            let dist2 = (t - ta) * (t - ta) + (l - la) * (l - la);
+                            if dist2 < best_dist2 {
+                                best = a;
+                                best_dist2 = dist2;
                             }
                         }
-                    } else {
-                        b_all_done = true;
-                        b_unchosen = b.iter().copied().collect();
+                        connections.push((b, best));
                     }
-                }
-                if !b_all_done {
-                    for &(ax, ay) in a.iter() {
-                        if let Some((bx, by)) = b_unchosen.pop() {
-                            connections.push((bx + by * w, ax + ay * w));
-                            let mut j = connections.len() - 1;
-                            for i in 0..connections.len() - 1 {
-                                if swap_if_improvement(w, &mut connections, i, j) {
-                                    j = i;
-                                }
+                    for (&a, &ta) in after_top_rankings.iter() {
+                        after_pixels[a] = false;
+                        let la = after_left_rankings[&a];
+                        let mut best = 0;
+                        let mut best_dist2 = 1e300;
+                        for (&b, &t) in before_top_rankings.iter() {
+                            let l = before_left_rankings[&b];
+                            let dist2 = (t - ta) * (t - ta) + (l - la) * (l - la);
+                            if dist2 < best_dist2 {
+                                best = b;
+                                best_dist2 = dist2;
                             }
-                        } else {
-                            break;
                         }
+                        connections.push((best, a));
                     }
                 }
+                connections.sort();
+                connections.dedup();
                 self.connections.insert((before, after), connections);
             }
             if let Some(connections) = self.connections.get_mut(&(before, after)) {
-                let mut num_improvements = 1;
-                while num_improvements > 0 && !connections.is_empty() {
-                    for _ in 0..connections.len() {
-                        let i = rand::random::<usize>() % connections.len();
-                        let j = rand::random::<usize>() % connections.len();
-                        let worked = swap_if_improvement(w, connections, i, j);
-                        num_improvements += worked as usize;
-                        if worked {
-                            assert!(!swap_if_improvement(w, connections, i, j));
-                        }
-                    }
-                    num_improvements = 0;
-                }
-
                 let w_before = (self.keyframes[after].time - time)
                     / (self.keyframes[after].time - self.keyframes[before].time);
                 let w_after = (time - self.keyframes[before].time)
