@@ -11,6 +11,7 @@ use macroquad::{
     },
     texture::{draw_texture_ex, DrawTextureParams},
 };
+use ordered_float::OrderedFloat;
 
 #[derive(Clone)]
 struct Bitmap {
@@ -64,7 +65,7 @@ fn rank_pixels(
     w: usize,
     mut pixels: Vec<bool>,
     mut todo: VecDeque<(usize, i64)>,
-) -> HashMap<usize, f64> {
+) -> HashMap<usize, OrderedFloat<f64>> {
     for (i, _) in todo.iter() {
         pixels[*i] = false;
     }
@@ -94,7 +95,7 @@ fn rank_pixels(
     }
     let max_rank = max_rank as f64;
     out.into_iter()
-        .map(|(k, v)| (k, v as f64 / max_rank))
+        .map(|(k, v)| (k, (v as f64 / max_rank).into()))
         .collect()
 }
 
@@ -187,6 +188,20 @@ impl Layer {
                         find_left(w, &pixels).map(|p| (p, 0)).collect();
                     let after_left_rankings = rank_pixels(w, pixels, todo);
 
+                    let mut before_rankings = Vec::new();
+                    for (&k, &top) in before_top_rankings.iter() {
+                        let left = before_left_rankings[&k];
+                        before_rankings.push((top, left, k));
+                    }
+                    before_rankings.sort_unstable();
+
+                    let mut after_rankings = Vec::new();
+                    for (&k, &top) in after_top_rankings.iter() {
+                        let left = after_left_rankings[&k];
+                        after_rankings.push((top, left, k));
+                    }
+                    after_rankings.sort_unstable();
+
                     assert_eq!(after_top_rankings.len(), after_left_rankings.len());
                     assert_eq!(before_top_rankings.len(), before_left_rankings.len());
                     assert_eq!(
@@ -197,35 +212,39 @@ impl Layer {
                         before_top_rankings.keys().copied().collect::<HashSet<_>>(),
                         before_left_rankings.keys().copied().collect::<HashSet<_>>()
                     );
-                    for (&b, &t) in before_top_rankings.iter() {
+                    for &(t, l, b) in before_rankings.iter() {
                         before_pixels[b] = false;
-                        let l = before_left_rankings[&b];
-                        let mut best = 0;
-                        let mut best_dist2 = 1e300;
-                        for (&a, &ta) in after_top_rankings.iter() {
-                            let la = after_left_rankings[&a];
-                            let dist2 = (t - ta) * (t - ta) + (l - la) * (l - la);
-                            if dist2 < best_dist2 {
-                                best = a;
-                                best_dist2 = dist2;
+                        let i = after_rankings.binary_search(&(t, l, b));
+                        let i = match i {
+                            Ok(i) => i,
+                            Err(i) => {
+                                if i < after_rankings.len() && i > 0 {
+                                    let d_i = (t - after_rankings[i].0).powi(2)
+                                        + (l - after_rankings[i].1).powi(2);
+                                    let d_i_1 = (t - after_rankings[i - 1].0).powi(2)
+                                        + (l - after_rankings[i - 1].1).powi(2);
+                                    if d_i < d_i_1 {
+                                        i
+                                    } else {
+                                        i - 1
+                                    }
+                                } else {
+                                    std::cmp::min(i, after_rankings.len() - 1)
+                                }
                             }
-                        }
-                        connections.push((b, best));
+                        };
+                        let (_, _, a) = after_rankings[i];
+                        connections.push((b, a))
                     }
-                    for (&a, &ta) in after_top_rankings.iter() {
+                    for &(t, l, a) in after_rankings.iter() {
                         after_pixels[a] = false;
-                        let la = after_left_rankings[&a];
-                        let mut best = 0;
-                        let mut best_dist2 = 1e300;
-                        for (&b, &t) in before_top_rankings.iter() {
-                            let l = before_left_rankings[&b];
-                            let dist2 = (t - ta) * (t - ta) + (l - la) * (l - la);
-                            if dist2 < best_dist2 {
-                                best = b;
-                                best_dist2 = dist2;
-                            }
-                        }
-                        connections.push((best, a));
+                        let i = before_rankings.binary_search(&(t, l, a));
+                        let i = match i {
+                            Ok(i) => i,
+                            Err(i) => std::cmp::min(i, before_rankings.len() - 1),
+                        };
+                        let (_, _, b) = before_rankings[i];
+                        connections.push((b, a))
                     }
                 }
                 connections.sort();
