@@ -188,6 +188,9 @@ impl Layer {
                         find_left(w, &pixels).map(|p| (p, 0)).collect();
                     let after_left_rankings = rank_pixels(w, pixels, todo);
 
+                    assert_eq!(after_top_rankings.len(), after_left_rankings.len());
+                    assert_eq!(before_top_rankings.len(), before_left_rankings.len());
+
                     let mut before_rankings = Vec::new();
                     for (&k, &top) in before_top_rankings.iter() {
                         let left = before_left_rankings[&k];
@@ -202,8 +205,6 @@ impl Layer {
                     }
                     after_rankings.sort_unstable();
 
-                    assert_eq!(after_top_rankings.len(), after_left_rankings.len());
-                    assert_eq!(before_top_rankings.len(), before_left_rankings.len());
                     assert_eq!(
                         after_top_rankings.keys().copied().collect::<HashSet<_>>(),
                         after_left_rankings.keys().copied().collect::<HashSet<_>>()
