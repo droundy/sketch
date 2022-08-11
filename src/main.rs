@@ -9,6 +9,7 @@ use macroquad::shapes::draw_poly;
 use macroquad::ui::root_ui;
 
 mod layer;
+mod moments;
 use layer::Layer;
 
 fn conf() -> Conf {
