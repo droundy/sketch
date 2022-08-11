@@ -1,7 +1,6 @@
 use std::ops::Mul;
 
-use macroquad::prelude::{Vec2, Mat2};
-use num_complex::ComplexFloat;
+use macroquad::prelude::{Vec2, };
 
 pub struct Chunk {
     w: usize,
@@ -140,7 +139,7 @@ fn chunks_test() {
     assert_eq!(3, chunks[0].area);
     assert_eq!(Vec2::new(2.0, 1.0), chunks[0].center);
     assert_eq!(Vec2::new(0.0, 1.0), chunks[0].axis);
-    assert_eq!(2.0.sqrt(), chunks[0].major);
+    assert_eq!(2.0_f32.sqrt(), chunks[0].major);
     assert_eq!(0.0, chunks[0].minor);
 
     let pixels = vec![false, false, true, true, false, true, true, false, true];
@@ -151,7 +150,7 @@ fn chunks_test() {
     assert_eq!(2, chunks[1].area);
     assert_eq!(Vec2::new(2.0, 1.0), chunks[0].center);
     assert_eq!(Vec2::new(0.0, 1.0), chunks[0].axis);
-    assert_eq!(2.0.sqrt(), chunks[0].major);
+    assert_eq!(2.0_f32.sqrt(), chunks[0].major);
     assert_eq!(0.0, chunks[0].minor);
 }
 
