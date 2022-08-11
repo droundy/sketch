@@ -1,4 +1,6 @@
-use macroquad::prelude::Vec2;
+use std::ops::Mul;
+
+use macroquad::prelude::{Vec2, Mat2};
 use num_complex::ComplexFloat;
 
 pub struct Chunk {
@@ -151,4 +153,55 @@ fn chunks_test() {
     assert_eq!(Vec2::new(0.0, 1.0), chunks[0].axis);
     assert_eq!(2.0.sqrt(), chunks[0].major);
     assert_eq!(0.0, chunks[0].minor);
+}
+
+
+#[derive(Copy, Clone)]
+pub struct Transform {
+    full_angle: f32,
+    sin: f32,
+    cos: f32,
+    scale_major: f32,
+    major_axis: Vec2,
+    scale_minor: f32,
+    minor_axis: Vec2,
+}
+
+impl Transform {
+    pub fn new(o: &Chunk, n: &Chunk) -> Self {
+        let full_angle = if o.axis.dot(n.axis) > 0.0 {
+            n.axis.angle_between(o.axis)
+        } else {
+            n.axis.angle_between(-o.axis)
+        };
+        let (sin, cos) = full_angle.sin_cos();
+        let major_axis = o.axis;
+        let minor_axis = o.axis.perp();
+        let scale_major = if o.major > 0.0 && n.major > 0.0 {
+            n.major / o.major
+        } else {
+            1.0
+        };
+        let scale_minor = if o.minor > 0.0 && n.minor > 0.0 {
+            n.minor / o.minor
+        } else {
+            1.0
+        };
+        Transform { full_angle, sin, cos, scale_major, major_axis, scale_minor, minor_axis }
+    }
+    pub fn scale(mut self, f: f32) -> Self {
+        self.full_angle *= f;
+        (self.sin, self.cos) = self.full_angle.sin_cos();
+        self.scale_major = 1.0 + (self.scale_major - 1.0)*f;
+        self.scale_minor = 1.0 + (self.scale_minor - 1.0)*f;
+        self
+    }
+}
+impl Mul<Vec2> for Transform {
+    type Output = Vec2;
+
+    fn mul(self, rhs: Vec2) -> Self::Output {
+        let v = self.major_axis*self.major_axis.dot(rhs)*self.scale_major + self.minor_axis*self.minor_axis.dot(rhs)*self.scale_minor;
+        Vec2::new(v.x*self.cos + v.y*self.sin, v.y*self.cos - v.x*self.sin)
+    }
 }
