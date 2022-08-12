@@ -16,11 +16,28 @@ impl Tween {
     pub fn new(w: usize, before: Vec<bool>, after: Vec<bool>) -> Self {
         let mut chunks = Vec::new();
 
-        let before_chunks = Chunk::find(w, before);
-        let after_chunks = Chunk::find(w, after);
+        let mut before_chunks = Chunk::find(w, before);
+        before_chunks.sort_by(|a, b| b.area.cmp(&a.area));
+        let mut after_chunks = Chunk::find(w, after);
+        after_chunks.sort_by(|a, b| b.area.cmp(&a.area));
 
-        // FIXME need to connect chunks up better.  Currently we just ignore the
-        // ending chunks.
+        let nchunks = std::cmp::min(before_chunks.len(), after_chunks.len());
+        if nchunks == 0 {
+            return Tween {
+                w,
+                chunks: Vec::new(),
+            };
+        }
+        // FIXME this is a hokwy way to pair up the chunks.
+        for _ in 0..1000 {
+            let i = rand::random::<usize>() % nchunks;
+            let j = rand::random::<usize>() % nchunks;
+            let v_before = before_chunks[i].center - before_chunks[j].center;
+            let v_after = after_chunks[i].center - after_chunks[j].center;
+            if v_after.dot(v_before) < 0.0 {
+                after_chunks.swap(i, j);
+            }
+        }
         for (before, after) in before_chunks.into_iter().zip(after_chunks.into_iter()) {
             chunks.push(ChunkTween::new(w, before, after));
         }
@@ -49,24 +66,61 @@ impl ChunkTween {
     /// FIXME: Want to respect transform in connecting pixels!
     fn new(w: usize, before: Chunk, after: Chunk) -> Self {
         let transform = Transform::new(&before, &after);
+
+        let before_positions = before
+            .points
+            .iter()
+            .copied()
+            .map(|i| (i, Vec2::new((i % w) as f32, (i / w) as f32)))
+            .map(|(i, v)| (i, transform * v))
+            .collect::<Vec<_>>();
+        let after_positions = after
+            .points
+            .iter()
+            .copied()
+            .map(|i| (i, Vec2::new((i % w) as f32, (i / w) as f32)))
+            .collect::<Vec<_>>();
+
+        let top_right_before = before_positions
+            .iter()
+            .max_by(|a, b| (a.1.x - a.1.y).partial_cmp(&(b.1.x - b.1.y)).unwrap())
+            .unwrap()
+            .0;
+        let top_left_before = before_positions
+            .iter()
+            .max_by(|a, b| (-a.1.x - a.1.y).partial_cmp(&(-b.1.x - b.1.y)).unwrap())
+            .unwrap()
+            .0;
+
+        let top_right_after = after_positions
+            .iter()
+            .max_by(|a, b| (a.1.x - a.1.y).partial_cmp(&(b.1.x - b.1.y)).unwrap())
+            .unwrap()
+            .0;
+        let top_left_after = after_positions
+            .iter()
+            .max_by(|a, b| (-a.1.x - a.1.y).partial_cmp(&(-b.1.x - b.1.y)).unwrap())
+            .unwrap()
+            .0;
+
         let mut connections = Vec::new();
 
-        let mut pixels = before.to_pixels();
-        let todo: VecDeque<(usize, i64)> = find_top(w, &pixels).map(|p| (p, 0)).collect();
-        let before_top_rankings = rank_pixels(w, pixels, todo);
-        let mut pixels = before.to_pixels();
-        let todo: VecDeque<(usize, i64)> = find_left(w, &pixels).map(|p| (p, 0)).collect();
-        let before_left_rankings = rank_pixels(w, pixels, todo);
+        let before_top_rankings = rank_pixels(w, before.to_pixels(), top_right_before);
+        let before_left_rankings = rank_pixels(w, before.to_pixels(), top_left_before);
 
-        let pixels = after.to_pixels();
-        let todo: VecDeque<(usize, i64)> = find_top(w, &pixels).map(|p| (p, 0)).collect();
-        let after_top_rankings = rank_pixels(w, pixels, todo);
-        let pixels = after.to_pixels();
-        let todo: VecDeque<(usize, i64)> = find_left(w, &pixels).map(|p| (p, 0)).collect();
-        let after_left_rankings = rank_pixels(w, pixels, todo);
-
-        assert_eq!(after_top_rankings.len(), after_left_rankings.len());
         assert_eq!(before_top_rankings.len(), before_left_rankings.len());
+
+        let after_top_rankings = rank_pixels(w, after.to_pixels(), top_right_after);
+        let after_left_rankings = rank_pixels(w, after.to_pixels(), top_left_after);
+
+        assert_eq!(
+            after_top_rankings.keys().copied().collect::<HashSet<_>>(),
+            after_left_rankings.keys().copied().collect::<HashSet<_>>()
+        );
+        assert_eq!(
+            before_top_rankings.keys().copied().collect::<HashSet<_>>(),
+            before_left_rankings.keys().copied().collect::<HashSet<_>>()
+        );
 
         let mut before_rankings = Vec::new();
         for (&k, &top) in before_top_rankings.iter() {
@@ -82,14 +136,6 @@ impl ChunkTween {
         }
         after_rankings.sort_unstable();
 
-        assert_eq!(
-            after_top_rankings.keys().copied().collect::<HashSet<_>>(),
-            after_left_rankings.keys().copied().collect::<HashSet<_>>()
-        );
-        assert_eq!(
-            before_top_rankings.keys().copied().collect::<HashSet<_>>(),
-            before_left_rankings.keys().copied().collect::<HashSet<_>>()
-        );
         for &(t, l, b) in before_rankings.iter() {
             let i = after_rankings.binary_search(&(t, l, b));
             let i = match i {
@@ -129,7 +175,7 @@ impl ChunkTween {
                             i - 1
                         }
                     } else {
-                        std::cmp::min(i, after_rankings.len() - 1)
+                        std::cmp::min(i, before_rankings.len() - 1)
                     }
                 }
             };
@@ -429,46 +475,10 @@ impl Mul<Vec2> for Transform {
     }
 }
 
-fn find_top(w: usize, pixels: &[bool]) -> impl Iterator<Item = usize> {
-    let mut points = Vec::new();
-    for i in 0..pixels.len() / w {
-        for j in 0..w {
-            let idx = i * w + j;
-            if pixels[idx] {
-                points.push(idx);
-            }
-        }
-        if !points.is_empty() {
-            break;
-        }
-    }
-    points.into_iter()
-}
-
-fn find_left(w: usize, pixels: &[bool]) -> impl Iterator<Item = usize> {
-    let mut points = Vec::new();
-    for j in 0..w {
-        for i in 0..pixels.len() / w {
-            let idx = i * w + j;
-            if pixels[idx] {
-                points.push(idx);
-            }
-        }
-        if !points.is_empty() {
-            break;
-        }
-    }
-    points.into_iter()
-}
-
-fn rank_pixels(
-    w: usize,
-    mut pixels: Vec<bool>,
-    mut todo: VecDeque<(usize, i64)>,
-) -> HashMap<usize, OrderedFloat<f64>> {
-    for (i, _) in todo.iter() {
-        pixels[*i] = false;
-    }
+fn rank_pixels(w: usize, mut pixels: Vec<bool>, start: usize) -> HashMap<usize, OrderedFloat<f64>> {
+    assert!(pixels[start]);
+    pixels[start] = false;
+    let mut todo: VecDeque<(usize, i64)> = [(start, 0)].into_iter().collect();
     let mut out = HashMap::new();
     let mut max_rank = 0;
     while let Some((p, rank)) = todo.pop_front() {
