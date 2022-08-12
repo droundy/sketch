@@ -164,6 +164,8 @@ pub struct Transform {
     major_axis: Vec2,
     scale_minor: f32,
     minor_axis: Vec2,
+    center: Vec2,
+    translation: Vec2,
 }
 
 impl Transform {
@@ -186,21 +188,45 @@ impl Transform {
         } else {
             1.0
         };
-        Transform { full_angle, sin, cos, scale_major, major_axis, scale_minor, minor_axis }
+        let center = o.center;
+        let translation = n.center - o.center;
+        Transform { full_angle, sin, cos, scale_major, major_axis, scale_minor, minor_axis, center, translation }
+    }
+    pub fn reverse(mut self) -> Self {
+        self.full_angle *= -1.0;
+        self.major_axis = Vec2::new(self.major_axis.x*self.cos + self.major_axis.y*self.sin, self.major_axis.y*self.cos - self.major_axis.x*self.sin);
+        self.minor_axis = Vec2::new(self.minor_axis.x*self.cos + self.minor_axis.y*self.sin, self.minor_axis.y*self.cos - self.minor_axis.x*self.sin);
+        self.sin *= -1.0;
+        self.center = self.center + self.translation;
+        self.translation *= -1.0;
+        self.scale_major = 1.0/self.scale_major;
+        self.scale_minor = 1.0/self.scale_minor;
+
+        self
     }
     pub fn scale(mut self, f: f32) -> Self {
         self.full_angle *= f;
         (self.sin, self.cos) = self.full_angle.sin_cos();
-        self.scale_major = 1.0 + (self.scale_major - 1.0)*f;
-        self.scale_minor = 1.0 + (self.scale_minor - 1.0)*f;
+        self.scale_major = self.scale_major.powf(f);
+        self.scale_minor = self.scale_minor.powf(f);
+        self.translation *= f;
         self
     }
 }
+
+impl Mul<Transform> for f32 {
+    type Output = Transform;
+    fn mul(self, rhs: Transform) -> Self::Output {
+        rhs.scale(self)
+    }
+}
+
 impl Mul<Vec2> for Transform {
     type Output = Vec2;
 
     fn mul(self, rhs: Vec2) -> Self::Output {
+        let rhs = rhs - self.center;
         let v = self.major_axis*self.major_axis.dot(rhs)*self.scale_major + self.minor_axis*self.minor_axis.dot(rhs)*self.scale_minor;
-        Vec2::new(v.x*self.cos + v.y*self.sin, v.y*self.cos - v.x*self.sin)
+        self.center + self.translation + Vec2::new(v.x*self.cos + v.y*self.sin, v.y*self.cos - v.x*self.sin)
     }
 }
