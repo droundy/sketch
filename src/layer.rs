@@ -1,5 +1,5 @@
 use std::{
-    collections::{HashMap, HashSet, VecDeque},
+    collections::HashMap,
     sync::atomic::{AtomicBool, AtomicUsize, Ordering},
 };
 
@@ -11,7 +11,8 @@ use macroquad::{
     },
     texture::{draw_texture_ex, DrawTextureParams},
 };
-use ordered_float::OrderedFloat;
+
+use crate::tween::Tween;
 
 #[derive(Clone)]
 struct Bitmap {
@@ -26,77 +27,7 @@ pub struct Layer {
     image: Image,
     texture: Texture2D,
     keyframes: Vec<Bitmap>,
-    connections: HashMap<(usize, usize), Vec<(usize, usize)>>,
-}
-
-fn find_top(w: usize, pixels: &[bool]) -> impl Iterator<Item = usize> {
-    let mut points = Vec::new();
-    for i in 0..pixels.len() / w {
-        for j in 0..w {
-            let idx = i * w + j;
-            if pixels[idx] {
-                points.push(idx);
-            }
-        }
-        if !points.is_empty() {
-            break;
-        }
-    }
-    points.into_iter()
-}
-
-fn find_left(w: usize, pixels: &[bool]) -> impl Iterator<Item = usize> {
-    let mut points = Vec::new();
-    for j in 0..w {
-        for i in 0..pixels.len() / w {
-            let idx = i * w + j;
-            if pixels[idx] {
-                points.push(idx);
-            }
-        }
-        if !points.is_empty() {
-            break;
-        }
-    }
-    points.into_iter()
-}
-
-fn rank_pixels(
-    w: usize,
-    mut pixels: Vec<bool>,
-    mut todo: VecDeque<(usize, i64)>,
-) -> HashMap<usize, OrderedFloat<f64>> {
-    for (i, _) in todo.iter() {
-        pixels[*i] = false;
-    }
-    let mut out = HashMap::new();
-    let mut max_rank = 0;
-    while let Some((p, rank)) = todo.pop_front() {
-        out.insert(p, rank);
-        max_rank = rank;
-        let x = p % w;
-        let y = p / w;
-        if x > 0 && pixels[p - 1] {
-            todo.push_back((p - 1, rank + 1));
-            pixels[p - 1] = false;
-        }
-        if x < w - 1 && pixels[p + 1] {
-            todo.push_back((p + 1, rank + 1));
-            pixels[p + 1] = false;
-        }
-        if y > 0 && pixels[p - w] {
-            todo.push_back((p - w, rank + 1));
-            pixels[p - w] = false;
-        }
-        if y < w - 1 && pixels[p + w] {
-            todo.push_back((p + w, rank + 1));
-            pixels[p + w] = false;
-        }
-    }
-    let max_rank = max_rank as f64;
-    out.into_iter()
-        .map(|(k, v)| (k, (v as f64 / max_rank).into()))
-        .collect()
+    tweens: HashMap<(usize, usize), Tween>,
 }
 
 impl Layer {
@@ -121,12 +52,12 @@ impl Layer {
                 texture: Texture2D::from_image(&bitmap),
                 bitmap,
             }],
-            connections: HashMap::new(),
+            tweens: HashMap::new(),
         }
     }
     pub fn handle_modified_bitmap(&mut self, time: f32) {
         let which = self.closest_frame(time);
-        self.connections.retain(|k, _| k.0 != which && k.1 != which);
+        self.tweens.retain(|k, _| k.0 != which && k.1 != which);
         let k = &mut self.keyframes[which];
         let mut center = Vec2::ZERO;
         let mut num = 0;
@@ -146,130 +77,32 @@ impl Layer {
         if before == after {
             self.keyframes[before].texture
         } else {
-            if self.connections.get(&(before, after)).is_none() {
-                let mut connections = Vec::new();
-                let w = self.image.width();
-
-                let mut before_pixels = self.keyframes[before]
+            if self.tweens.get(&(before, after)).is_none() {
+                let before_pixels = self.keyframes[before]
                     .bitmap
                     .get_image_data()
                     .iter()
                     .map(|x| x[3] > 0)
                     .collect::<Vec<_>>();
-                let mut after_pixels = self.keyframes[after]
+                let after_pixels = self.keyframes[after]
                     .bitmap
                     .get_image_data()
                     .iter()
                     .map(|x| x[3] > 0)
                     .collect::<Vec<_>>();
 
-                while after_pixels.iter().any(|&p| p) && before_pixels.iter().any(|&p| p) {
-                    let pixels = before_pixels.clone();
-                    let todo: VecDeque<(usize, i64)> =
-                        find_top(w, &pixels).map(|p| (p, 0)).collect();
-                    let before_top_rankings = rank_pixels(w, pixels, todo);
-                    let mut pixels = vec![false; before_pixels.len()];
-                    for &i in before_top_rankings.keys() {
-                        pixels[i] = true;
-                    }
-                    let todo: VecDeque<(usize, i64)> =
-                        find_left(w, &pixels).map(|p| (p, 0)).collect();
-                    let before_left_rankings = rank_pixels(w, pixels, todo);
-
-                    let pixels = after_pixels.clone();
-                    let todo: VecDeque<(usize, i64)> =
-                        find_top(w, &pixels).map(|p| (p, 0)).collect();
-                    let after_top_rankings = rank_pixels(w, pixels, todo);
-                    let mut pixels = vec![false; after_pixels.len()];
-                    for &i in after_top_rankings.keys() {
-                        pixels[i] = true;
-                    }
-                    let todo: VecDeque<(usize, i64)> =
-                        find_left(w, &pixels).map(|p| (p, 0)).collect();
-                    let after_left_rankings = rank_pixels(w, pixels, todo);
-
-                    assert_eq!(after_top_rankings.len(), after_left_rankings.len());
-                    assert_eq!(before_top_rankings.len(), before_left_rankings.len());
-
-                    let mut before_rankings = Vec::new();
-                    for (&k, &top) in before_top_rankings.iter() {
-                        let left = before_left_rankings[&k];
-                        before_rankings.push((top, left, k));
-                    }
-                    before_rankings.sort_unstable();
-
-                    let mut after_rankings = Vec::new();
-                    for (&k, &top) in after_top_rankings.iter() {
-                        let left = after_left_rankings[&k];
-                        after_rankings.push((top, left, k));
-                    }
-                    after_rankings.sort_unstable();
-
-                    assert_eq!(
-                        after_top_rankings.keys().copied().collect::<HashSet<_>>(),
-                        after_left_rankings.keys().copied().collect::<HashSet<_>>()
-                    );
-                    assert_eq!(
-                        before_top_rankings.keys().copied().collect::<HashSet<_>>(),
-                        before_left_rankings.keys().copied().collect::<HashSet<_>>()
-                    );
-                    for &(t, l, b) in before_rankings.iter() {
-                        before_pixels[b] = false;
-                        let i = after_rankings.binary_search(&(t, l, b));
-                        let i = match i {
-                            Ok(i) => i,
-                            Err(i) => {
-                                if i < after_rankings.len() && i > 0 {
-                                    let d_i = (t - after_rankings[i].0).powi(2)
-                                        + (l - after_rankings[i].1).powi(2);
-                                    let d_i_1 = (t - after_rankings[i - 1].0).powi(2)
-                                        + (l - after_rankings[i - 1].1).powi(2);
-                                    if d_i < d_i_1 {
-                                        i
-                                    } else {
-                                        i - 1
-                                    }
-                                } else {
-                                    std::cmp::min(i, after_rankings.len() - 1)
-                                }
-                            }
-                        };
-                        let (_, _, a) = after_rankings[i];
-                        connections.push((b, a))
-                    }
-                    for &(t, l, a) in after_rankings.iter() {
-                        after_pixels[a] = false;
-                        let i = before_rankings.binary_search(&(t, l, a));
-                        let i = match i {
-                            Ok(i) => i,
-                            Err(i) => std::cmp::min(i, before_rankings.len() - 1),
-                        };
-                        let (_, _, b) = before_rankings[i];
-                        connections.push((b, a))
-                    }
-                }
-                connections.sort();
-                connections.dedup();
-                self.connections.insert((before, after), connections);
+                self.tweens.insert(
+                    (before, after),
+                    Tween::new(self.image.width(), before_pixels, after_pixels),
+                );
             }
-            if let Some(connections) = self.connections.get_mut(&(before, after)) {
-                let w_before = (self.keyframes[after].time - time)
-                    / (self.keyframes[after].time - self.keyframes[before].time);
-                let w_after = (time - self.keyframes[before].time)
-                    / (self.keyframes[after].time - self.keyframes[before].time);
-                for v in self.image.get_image_data_mut().iter_mut() {
-                    *v = [255, 255, 255, 0];
+            if let Some(tween) = self.tweens.get_mut(&(before, after)) {
+                for p in self.image.get_image_data_mut().iter_mut() {
+                    *p = [0; 4];
                 }
-                for &(b, a) in connections.iter() {
-                    let bx = b % self.image.width();
-                    let by = b / self.image.width();
-                    let ax = a % self.image.width();
-                    let ay = a / self.image.width();
-                    let x = w_before * bx as f32 + w_after * ax as f32;
-                    let y = w_before * by as f32 + w_after * ay as f32;
-                    let idx = x.round() as usize + (y.round() as usize) * self.image.width();
-                    self.image.get_image_data_mut()[idx][3] = 255;
-                }
+                let fraction = (self.keyframes[after].time - time)
+                    / (self.keyframes[after].time - self.keyframes[before].time);
+                tween.draw(fraction, [255; 4], self.image.get_image_data_mut());
                 self.texture.update(&self.image);
                 self.texture
             } else {
