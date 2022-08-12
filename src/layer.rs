@@ -100,7 +100,7 @@ impl Layer {
                 for p in self.image.get_image_data_mut().iter_mut() {
                     *p = [0; 4];
                 }
-                let fraction = (self.keyframes[after].time - time)
+                let fraction = (time - self.keyframes[before].time)
                     / (self.keyframes[after].time - self.keyframes[before].time);
                 tween.draw(fraction, [255; 4], self.image.get_image_data_mut());
                 self.texture.update(&self.image);

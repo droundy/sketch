@@ -22,9 +22,7 @@ impl Tween {
 
         let nchunks = std::cmp::min(before_chunks.len(), after_chunks.len());
         if nchunks == 0 {
-            return Tween {
-                chunks: Vec::new(),
-            };
+            return Tween { chunks: Vec::new() };
         }
         // FIXME this is a hokwy way to pair up the chunks.
         for _ in 0..1000 {
@@ -197,17 +195,18 @@ impl ChunkTween {
     fn draw(&self, fraction: f32, color: [u8; 4], pixels: &mut [[u8; 4]]) {
         assert!(fraction >= 0.0);
         assert!(fraction <= 1.0);
-        let w_before = fraction;
-        let w_after = 1.0 - fraction;
+        let reverse_transform = (1.0 - fraction) * self.transform.reverse();
+        let transform = fraction * self.transform;
         for &(b, a) in self.connections.iter() {
-            let bx = b % self.w;
-            let by = b / self.w;
-            let ax = a % self.w;
-            let ay = a / self.w;
-            let x = w_before * bx as f32 + w_after * ax as f32;
-            let y = w_before * by as f32 + w_after * ay as f32;
-            let idx = x.round() as usize + (y.round() as usize) * self.w;
+            let b = transform * Vec2::new((b % self.w) as f32, (b / self.w) as f32);
+            let a = reverse_transform * Vec2::new((a % self.w) as f32, (a / self.w) as f32);
+            let p = fraction * a + (1.0 - fraction) * b;
+            let idx = a.x.round() as usize + (a.y.round() as usize) * self.w;
             pixels[idx] = color;
+            let idx = b.x.round() as usize - 100 + (b.y.round() as usize) * self.w;
+            if idx < pixels.len() {
+                pixels[idx] = [255, 0, 0, 255];
+            }
         }
     }
 }
@@ -249,7 +248,7 @@ impl Chunk {
             let dy = (p / w) as f32 - center.y;
             x2 += dx * dx;
             y2 += dy * dy;
-            xy += dx * dy;
+            xy += -dx * dy;
         }
         // v = (a b)
         // x2*a + xy*b = e*a
@@ -266,12 +265,12 @@ impl Chunk {
         //
         // c = ((y2-x2) +/- sqrt((x2-y2)**2 + 4*xy**2)) / (2*xy)
         let ax1 = Vec2::new(
-            ((y2 - x2) + ((x2 - y2).powi(2) + 4.0 * xy.powi(2)).sqrt()) / (2.0 * xy),
+            (-(y2 - x2) - ((x2 - y2).powi(2) + 4.0 * xy.powi(2)).sqrt()) / (2.0 * xy),
             1.0,
         )
         .normalize();
         let ax2 = Vec2::new(
-            ((y2 - x2) - ((x2 - y2).powi(2) + 4.0 * xy.powi(2)).sqrt()) / (2.0 * xy),
+            -((y2 - x2) - ((x2 - y2).powi(2) + 4.0 * xy.powi(2)).sqrt()) / (2.0 * xy),
             1.0,
         )
         .normalize();
@@ -286,6 +285,19 @@ impl Chunk {
         } else {
             x2 + xy * ax2.y / ax2.x
         };
+        println!("[{x2:8.0} {xy:8.0}]   {:8.4e}   {:8.4e}", ax1.x, ax2.x);
+        println!("[{xy:8.0} {y2:8.0}]   {:8.4e}   {:8.4e}", ax1.y, ax2.y);
+        println!(
+            "a1 mul moment is {} xhat + {} yhat",
+            (x2 * ax1.x + xy * ax1.y) / ax1.x,
+            (xy * ax1.x + y2 * ax1.y) / ax1.y
+        );
+        println!(
+            "a2 mul moment is {} xhat + {} yhat",
+            (x2 * ax2.x + xy * ax2.y) / ax2.x,
+            (xy * ax2.x + y2 * ax2.y) / ax2.y
+        );
+        println!("{e1} {e2}");
         let (major, minor, axis) = if xy == 0.0 {
             if x2 > y2 {
                 (x2.sqrt(), y2.sqrt(), Vec2::new(1.0, 0.0))
@@ -293,9 +305,9 @@ impl Chunk {
                 (y2.sqrt(), x2.sqrt(), Vec2::new(0.0, 1.0))
             }
         } else if e1 > e2 {
-            (e1.sqrt(), e2.sqrt(), ax1)
+            (e1.sqrt(), e2.abs().sqrt(), ax1)
         } else {
-            (e2.sqrt(), e1.sqrt(), ax2)
+            (e2.sqrt(), e1.abs().sqrt(), ax2)
         };
         Chunk {
             area,
@@ -393,6 +405,7 @@ impl Transform {
         } else {
             n.axis.angle_between(-o.axis)
         };
+        println!("full_angle is {full_angle}");
         let (sin, cos) = full_angle.sin_cos();
         let major_axis = o.axis;
         let minor_axis = o.axis.perp();
@@ -406,6 +419,9 @@ impl Transform {
         } else {
             1.0
         };
+        println!("scales are: {scale_major} and {scale_minor}");
+        println!("old major {} and minor {}", o.major, o.minor);
+        println!("new major {} and minor {}", n.major, n.minor);
         let center = o.center;
         let translation = n.center - o.center;
         Transform {
@@ -422,14 +438,8 @@ impl Transform {
     }
     pub fn reverse(mut self) -> Self {
         self.full_angle *= -1.0;
-        self.major_axis = Vec2::new(
-            self.major_axis.x * self.cos + self.major_axis.y * self.sin,
-            self.major_axis.y * self.cos - self.major_axis.x * self.sin,
-        );
-        self.minor_axis = Vec2::new(
-            self.minor_axis.x * self.cos + self.minor_axis.y * self.sin,
-            self.minor_axis.y * self.cos - self.minor_axis.x * self.sin,
-        );
+        self.major_axis = rotate(self.cos, self.sin, self.major_axis);
+        self.minor_axis = rotate(self.cos, self.sin, self.minor_axis);
         self.sin *= -1.0;
         self.center = self.center + self.translation;
         self.translation *= -1.0;
@@ -462,13 +472,12 @@ impl Mul<Vec2> for Transform {
         let rhs = rhs - self.center;
         let v = self.major_axis * self.major_axis.dot(rhs) * self.scale_major
             + self.minor_axis * self.minor_axis.dot(rhs) * self.scale_minor;
-        self.center
-            + self.translation
-            + Vec2::new(
-                v.x * self.cos + v.y * self.sin,
-                v.y * self.cos - v.x * self.sin,
-            )
+        self.center + self.translation + rotate(self.cos, self.sin, v)
     }
+}
+
+fn rotate(cos: f32, sin: f32, v: Vec2) -> Vec2 {
+    Vec2::new(v.x * cos - v.y * sin, v.y * cos + v.x * sin)
 }
 
 fn rank_pixels(w: usize, mut pixels: Vec<bool>, start: usize) -> HashMap<usize, OrderedFloat<f64>> {
