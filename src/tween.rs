@@ -117,7 +117,21 @@ impl ChunkTween {
             let i = before_rankings.binary_search(&(t, l, a));
             let i = match i {
                 Ok(i) => i,
-                Err(i) => std::cmp::min(i, before_rankings.len() - 1),
+                Err(i) => {
+                    if i < before_rankings.len() && i > 0 {
+                        let d_i =
+                            (t - before_rankings[i].0).powi(2) + (l - before_rankings[i].1).powi(2);
+                        let d_i_1 = (t - before_rankings[i - 1].0).powi(2)
+                            + (l - before_rankings[i - 1].1).powi(2);
+                        if d_i < d_i_1 {
+                            i
+                        } else {
+                            i - 1
+                        }
+                    } else {
+                        std::cmp::min(i, after_rankings.len() - 1)
+                    }
+                }
             };
             let (_, _, b) = before_rankings[i];
             connections.push((b, a))
