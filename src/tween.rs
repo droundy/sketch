@@ -285,19 +285,6 @@ impl Chunk {
         } else {
             x2 + xy * ax2.y / ax2.x
         };
-        println!("[{x2:8.0} {xy:8.0}]   {:8.4e}   {:8.4e}", ax1.x, ax2.x);
-        println!("[{xy:8.0} {y2:8.0}]   {:8.4e}   {:8.4e}", ax1.y, ax2.y);
-        println!(
-            "a1 mul moment is {} xhat + {} yhat",
-            (x2 * ax1.x + xy * ax1.y) / ax1.x,
-            (xy * ax1.x + y2 * ax1.y) / ax1.y
-        );
-        println!(
-            "a2 mul moment is {} xhat + {} yhat",
-            (x2 * ax2.x + xy * ax2.y) / ax2.x,
-            (xy * ax2.x + y2 * ax2.y) / ax2.y
-        );
-        println!("{e1} {e2}");
         let (major, minor, axis) = if xy == 0.0 {
             if x2 > y2 {
                 (x2.sqrt(), y2.sqrt(), Vec2::new(1.0, 0.0))
