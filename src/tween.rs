@@ -250,6 +250,9 @@ impl Chunk {
             y2 += dy * dy;
             xy += -dx * dy;
         }
+        x2 /= points.len() as f32;
+        y2 /= points.len() as f32;
+        xy /= points.len() as f32;
         // v = (a b)
         // x2*a + xy*b = e*a
         // xy*a + y2*b = e*b
