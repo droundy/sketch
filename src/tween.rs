@@ -8,7 +8,6 @@ use ordered_float::OrderedFloat;
 
 /// A connection between two keyframes.
 pub struct Tween {
-    w: usize,
     chunks: Vec<ChunkTween>,
 }
 
@@ -24,7 +23,6 @@ impl Tween {
         let nchunks = std::cmp::min(before_chunks.len(), after_chunks.len());
         if nchunks == 0 {
             return Tween {
-                w,
                 chunks: Vec::new(),
             };
         }
@@ -41,7 +39,7 @@ impl Tween {
         for (before, after) in before_chunks.into_iter().zip(after_chunks.into_iter()) {
             chunks.push(ChunkTween::new(w, before, after));
         }
-        Tween { w, chunks }
+        Tween { chunks }
     }
 
     /// Draw this Tween to the pixel buffer
@@ -215,7 +213,6 @@ impl ChunkTween {
 }
 
 pub struct Chunk {
-    w: usize,
     points: Vec<usize>,
     center: Vec2,
     area: usize,
@@ -301,7 +298,6 @@ impl Chunk {
             (e2.sqrt(), e1.sqrt(), ax2)
         };
         Chunk {
-            w,
             area,
             points,
             center,
