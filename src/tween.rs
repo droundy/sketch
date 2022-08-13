@@ -1,10 +1,6 @@
-use std::{
-    collections::{HashMap, HashSet, VecDeque},
-    ops::Mul,
-};
+use std::ops::Mul;
 
 use macroquad::prelude::Vec2;
-use num_complex::ComplexFloat;
 use ordered_float::OrderedFloat;
 
 /// A connection between two keyframes.
@@ -291,17 +287,6 @@ impl Chunk {
             axis,
         }
     }
-
-    fn to_pixels(&self) -> Vec<bool> {
-        let mut pixels = Vec::new();
-        for p in self.points.iter().copied() {
-            if p >= pixels.len() {
-                pixels.extend(vec![false; p + 1]);
-            }
-            pixels[p] = true;
-        }
-        pixels
-    }
 }
 
 fn contiguous_pixels(w: usize, pixels: &mut [bool]) -> Option<Vec<usize>> {
@@ -452,38 +437,4 @@ impl Mul<Vec2> for Transform {
 
 fn rotate(cos: f32, sin: f32, v: Vec2) -> Vec2 {
     Vec2::new(v.x * cos - v.y * sin, v.y * cos + v.x * sin)
-}
-
-fn rank_pixels(w: usize, mut pixels: Vec<bool>, start: usize) -> HashMap<usize, OrderedFloat<f64>> {
-    assert!(pixels[start]);
-    pixels[start] = false;
-    let mut todo: VecDeque<(usize, i64)> = [(start, 0)].into_iter().collect();
-    let mut out = HashMap::new();
-    let mut max_rank = 0;
-    while let Some((p, rank)) = todo.pop_front() {
-        out.insert(p, rank);
-        max_rank = rank;
-        let x = p % w;
-        let y = p / w;
-        if x > 0 && pixels[p - 1] {
-            todo.push_back((p - 1, rank + 1));
-            pixels[p - 1] = false;
-        }
-        if x < w - 1 && pixels[p + 1] {
-            todo.push_back((p + 1, rank + 1));
-            pixels[p + 1] = false;
-        }
-        if y > 0 && pixels[p - w] {
-            todo.push_back((p - w, rank + 1));
-            pixels[p - w] = false;
-        }
-        if y < w - 1 && pixels[p + w] {
-            todo.push_back((p + w, rank + 1));
-            pixels[p + w] = false;
-        }
-    }
-    let max_rank = max_rank as f64;
-    out.into_iter()
-        .map(|(k, v)| (k, (v as f64 / max_rank).into()))
-        .collect()
 }
