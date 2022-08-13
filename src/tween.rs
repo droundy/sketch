@@ -4,6 +4,7 @@ use std::{
 };
 
 use macroquad::prelude::Vec2;
+use num_complex::ComplexFloat;
 use ordered_float::OrderedFloat;
 
 /// A connection between two keyframes.
@@ -63,120 +64,98 @@ impl ChunkTween {
     fn new(w: usize, before: Chunk, after: Chunk) -> Self {
         let transform = Transform::new(&before, &after);
 
-        let before_positions = before
+        let mut before_positions = before
             .points
             .iter()
             .copied()
             .map(|i| (i, Vec2::new((i % w) as f32, (i / w) as f32)))
             .map(|(i, v)| (i, transform * v))
             .collect::<Vec<_>>();
-        let after_positions = after
+        let mut after_positions = after
             .points
             .iter()
             .copied()
             .map(|i| (i, Vec2::new((i % w) as f32, (i / w) as f32)))
             .collect::<Vec<_>>();
-
-        let top_right_before = before_positions
-            .iter()
-            .max_by(|a, b| (a.1.x - a.1.y).partial_cmp(&(b.1.x - b.1.y)).unwrap())
-            .unwrap()
-            .0;
-        let top_left_before = before_positions
-            .iter()
-            .max_by(|a, b| (-a.1.x - a.1.y).partial_cmp(&(-b.1.x - b.1.y)).unwrap())
-            .unwrap()
-            .0;
-
-        let top_right_after = after_positions
-            .iter()
-            .max_by(|a, b| (a.1.x - a.1.y).partial_cmp(&(b.1.x - b.1.y)).unwrap())
-            .unwrap()
-            .0;
-        let top_left_after = after_positions
-            .iter()
-            .max_by(|a, b| (-a.1.x - a.1.y).partial_cmp(&(-b.1.x - b.1.y)).unwrap())
-            .unwrap()
-            .0;
+        before_positions.sort_unstable_by_key(|(_, v)| OrderedFloat(v.x));
+        after_positions.sort_unstable_by_key(|(_, v)| OrderedFloat(v.x));
 
         let mut connections = Vec::new();
 
-        let before_top_rankings = rank_pixels(w, before.to_pixels(), top_right_before);
-        let before_left_rankings = rank_pixels(w, before.to_pixels(), top_left_before);
-
-        assert_eq!(before_top_rankings.len(), before_left_rankings.len());
-
-        let after_top_rankings = rank_pixels(w, after.to_pixels(), top_right_after);
-        let after_left_rankings = rank_pixels(w, after.to_pixels(), top_left_after);
-
-        assert_eq!(
-            after_top_rankings.keys().copied().collect::<HashSet<_>>(),
-            after_left_rankings.keys().copied().collect::<HashSet<_>>()
-        );
-        assert_eq!(
-            before_top_rankings.keys().copied().collect::<HashSet<_>>(),
-            before_left_rankings.keys().copied().collect::<HashSet<_>>()
-        );
-
-        let mut before_rankings = Vec::new();
-        for (&k, &top) in before_top_rankings.iter() {
-            let left = before_left_rankings[&k];
-            before_rankings.push((top, left, k));
-        }
-        before_rankings.sort_unstable();
-
-        let mut after_rankings = Vec::new();
-        for (&k, &top) in after_top_rankings.iter() {
-            let left = after_left_rankings[&k];
-            after_rankings.push((top, left, k));
-        }
-        after_rankings.sort_unstable();
-
-        for &(t, l, b) in before_rankings.iter() {
-            let i = after_rankings.binary_search(&(t, l, b));
-            let i = match i {
+        for (b, v) in before_positions.iter().copied() {
+            let a_guess = match after_positions
+                .binary_search_by_key(&OrderedFloat(v.x), |(_, v)| OrderedFloat(v.x))
+            {
                 Ok(i) => i,
                 Err(i) => {
-                    if i < after_rankings.len() && i > 0 {
-                        let d_i =
-                            (t - after_rankings[i].0).powi(2) + (l - after_rankings[i].1).powi(2);
-                        let d_i_1 = (t - after_rankings[i - 1].0).powi(2)
-                            + (l - after_rankings[i - 1].1).powi(2);
-                        if d_i < d_i_1 {
-                            i
-                        } else {
-                            i - 1
-                        }
+                    if i == 0 {
+                        0
                     } else {
-                        std::cmp::min(i, after_rankings.len() - 1)
+                        i - 1
                     }
                 }
             };
-            let (_, _, a) = after_rankings[i];
-            connections.push((b, a))
+            let mut best_dist = after_positions[a_guess].1.distance(v);
+            let mut best_a = a_guess;
+            for i in a_guess + 1..after_positions.len() {
+                let d_i = after_positions[i].1.distance(v);
+                if d_i < best_dist {
+                    best_a = i;
+                    best_dist = d_i;
+                }
+                if (after_positions[i].1.x - v.x).abs() > best_dist {
+                    break;
+                }
+            }
+            for i in (0..a_guess).rev() {
+                let d_i = after_positions[i].1.distance(v);
+                if d_i < best_dist {
+                    best_a = i;
+                    best_dist = d_i;
+                }
+                if (after_positions[i].1.x - v.x).abs() > best_dist {
+                    break;
+                }
+            }
+            connections.push((b, after_positions[best_a].0));
         }
-        for &(t, l, a) in after_rankings.iter() {
-            let i = before_rankings.binary_search(&(t, l, a));
-            let i = match i {
+
+        for (a, v) in after_positions.iter().copied() {
+            let b_guess = match before_positions
+                .binary_search_by_key(&OrderedFloat(v.x), |(_, v)| OrderedFloat(v.x))
+            {
                 Ok(i) => i,
                 Err(i) => {
-                    if i < before_rankings.len() && i > 0 {
-                        let d_i =
-                            (t - before_rankings[i].0).powi(2) + (l - before_rankings[i].1).powi(2);
-                        let d_i_1 = (t - before_rankings[i - 1].0).powi(2)
-                            + (l - before_rankings[i - 1].1).powi(2);
-                        if d_i < d_i_1 {
-                            i
-                        } else {
-                            i - 1
-                        }
+                    if i == 0 {
+                        0
                     } else {
-                        std::cmp::min(i, before_rankings.len() - 1)
+                        i - 1
                     }
                 }
             };
-            let (_, _, b) = before_rankings[i];
-            connections.push((b, a))
+            let mut best_dist = before_positions[b_guess].1.distance(v);
+            let mut best_b = b_guess;
+            for i in b_guess + 1..before_positions.len() {
+                let d_i = before_positions[i].1.distance(v);
+                if d_i < best_dist {
+                    best_b = i;
+                    best_dist = d_i;
+                }
+                if (before_positions[i].1.x - v.x).abs() > best_dist {
+                    break;
+                }
+            }
+            for i in (0..b_guess).rev() {
+                let d_i = before_positions[i].1.distance(v);
+                if d_i < best_dist {
+                    best_b = i;
+                    best_dist = d_i;
+                }
+                if (before_positions[i].1.x - v.x).abs() > best_dist {
+                    break;
+                }
+            }
+            connections.push((before_positions[best_b].0, a));
         }
 
         connections.sort();
