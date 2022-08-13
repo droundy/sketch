@@ -1,3 +1,4 @@
+use std::time::Instant;
 use std::{f32::consts::PI, sync::atomic::AtomicBool};
 
 use macroquad::prelude::{
@@ -248,22 +249,23 @@ async fn main() {
     };
     let width = drawing.width as usize;
     let height = drawing.height as usize;
+    let mut started = Instant::now();
     loop {
         // clear_background(WHITE);
         if is_key_pressed(KeyCode::Escape) {
             return;
         }
         if drawing.am_animating {
-            drawing.time += 0.01;
-            if drawing.time > 1.0 {
-                drawing.time = 0.0;
-            }
+            drawing.time = (started.elapsed().as_secs_f32() * 0.2) % 1.0;
         }
 
         for l in drawing.layers.iter_mut() {
             draw_texture(l.texture(drawing.time), 0.0, 0.0, l.color);
         }
         let animation_button_selected = drawing.animation_button();
+        if animation_button_selected {
+            started = Instant::now();
+        }
         let color_selected = color_selector(&mut drawing.layers[drawing.current].color);
         let frame_selected = drawing.frame_selector();
         let layer_selected = drawing.layer_selector();
