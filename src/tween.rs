@@ -201,12 +201,14 @@ impl ChunkTween {
             let b = transform * Vec2::new((b % self.w) as f32, (b / self.w) as f32);
             let a = reverse_transform * Vec2::new((a % self.w) as f32, (a / self.w) as f32);
             let p = fraction * a + (1.0 - fraction) * b;
-            let idx = a.x.round() as usize + (a.y.round() as usize) * self.w;
-            pixels[idx] = color;
-            let idx = b.x.round() as usize - 100 + (b.y.round() as usize) * self.w;
-            if idx < pixels.len() {
-                pixels[idx] = [255, 0, 0, 255];
+            let idx = p.x.round() as usize + (p.y.round() as usize) * self.w;
+            if let Some(p) = pixels.get_mut(idx) {
+                *p = color;
             }
+            // let idx = b.x.round() as usize - 100 + (b.y.round() as usize) * self.w;
+            // if idx < pixels.len() {
+            //     pixels[idx] = [255, 0, 0, 255];
+            // }
         }
     }
 }
@@ -248,7 +250,7 @@ impl Chunk {
             let dy = (p / w) as f32 - center.y;
             x2 += dx * dx;
             y2 += dy * dy;
-            xy += -dx * dy;
+            xy += dx * dy;
         }
         x2 /= points.len() as f32;
         y2 /= points.len() as f32;
@@ -295,10 +297,12 @@ impl Chunk {
                 (y2.sqrt(), x2.sqrt(), Vec2::new(0.0, 1.0))
             }
         } else if e1 > e2 {
-            (e1.sqrt(), e2.abs().sqrt(), ax1)
+            (e1.sqrt(), e2.sqrt(), ax1)
         } else {
-            (e2.sqrt(), e1.abs().sqrt(), ax2)
+            (e2.sqrt(), e1.sqrt(), ax2)
         };
+        println!("axis 1: {} {}  gives {e1}", ax1.x, ax1.y);
+        println!("axis 2: {} {}  gives {e2}", ax2.x, ax2.y);
         Chunk {
             area,
             points,
@@ -383,22 +387,20 @@ pub struct Transform {
     scale_major: f32,
     major_axis: Vec2,
     scale_minor: f32,
-    minor_axis: Vec2,
     center: Vec2,
     translation: Vec2,
 }
 
 impl Transform {
     pub fn new(o: &Chunk, n: &Chunk) -> Self {
-        let full_angle = if o.axis.dot(n.axis) > 0.0 {
-            n.axis.angle_between(o.axis)
+        let mut full_angle = if o.axis.dot(n.axis) > 0.0 {
+            -n.axis.angle_between(o.axis)
         } else {
-            n.axis.angle_between(-o.axis)
+            -n.axis.angle_between(-o.axis)
         };
         println!("full_angle is {full_angle}");
         let (sin, cos) = full_angle.sin_cos();
         let major_axis = o.axis;
-        let minor_axis = o.axis.perp();
         let scale_major = if o.major > 0.0 && n.major > 0.0 {
             n.major / o.major
         } else {
@@ -409,9 +411,13 @@ impl Transform {
         } else {
             1.0
         };
+        if o.major / o.minor < 1.1 || n.major / n.minor < 1.1 {
+            full_angle = 0.0;
+        }
         println!("scales are: {scale_major} and {scale_minor}");
         println!("old major {} and minor {}", o.major, o.minor);
         println!("new major {} and minor {}", n.major, n.minor);
+        println!("the major axis is {} {}", major_axis.x, major_axis.y);
         let center = o.center;
         let translation = n.center - o.center;
         Transform {
@@ -421,7 +427,6 @@ impl Transform {
             scale_major,
             major_axis,
             scale_minor,
-            minor_axis,
             center,
             translation,
         }
@@ -429,7 +434,6 @@ impl Transform {
     pub fn reverse(mut self) -> Self {
         self.full_angle *= -1.0;
         self.major_axis = rotate(self.cos, self.sin, self.major_axis);
-        self.minor_axis = rotate(self.cos, self.sin, self.minor_axis);
         self.sin *= -1.0;
         self.center = self.center + self.translation;
         self.translation *= -1.0;
@@ -460,8 +464,9 @@ impl Mul<Vec2> for Transform {
 
     fn mul(self, rhs: Vec2) -> Self::Output {
         let rhs = rhs - self.center;
+        let minor_axis = self.major_axis.perp();
         let v = self.major_axis * self.major_axis.dot(rhs) * self.scale_major
-            + self.minor_axis * self.minor_axis.dot(rhs) * self.scale_minor;
+            + minor_axis * minor_axis.dot(rhs) * self.scale_minor;
         self.center + self.translation + rotate(self.cos, self.sin, v)
     }
 }
