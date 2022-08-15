@@ -303,7 +303,7 @@ fn contiguous_pixels(w: usize, pixels: &mut [bool]) -> Option<Vec<usize>> {
             todo.push(p - 1);
             pixels[p - 1] = false;
         }
-        if x < w - 1 && pixels[p + 1] {
+        if x < w - 1 && p + 1 < pixels.len() && pixels[p + 1] {
             todo.push(p + 1);
             pixels[p + 1] = false;
         }
@@ -311,7 +311,7 @@ fn contiguous_pixels(w: usize, pixels: &mut [bool]) -> Option<Vec<usize>> {
             todo.push(p - w);
             pixels[p - w] = false;
         }
-        if y < w - 1 && pixels[p + w] {
+        if y < w - 1 && p + w < pixels.len() && pixels[p + w] {
             todo.push(p + w);
             pixels[p + w] = false;
         }

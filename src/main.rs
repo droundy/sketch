@@ -8,6 +8,7 @@ use macroquad::prelude::{
     Vec2, BLACK, GRAY, WHITE,
 };
 use macroquad::shapes::draw_poly;
+use macroquad::texture::{Image, Texture2D};
 use macroquad::ui::root_ui;
 
 mod layer;
@@ -24,7 +25,7 @@ fn conf() -> Conf {
     }
 }
 
-fn color_selector_color(fx: f32, fy: f32) -> Option<Color> {
+fn color_selector_color(fx: f32, fy: f32) -> Option<[u8; 4]> {
     let fx = fx * 2.0 - 1.0;
     let fy = fy * 2.0 - 1.0;
     let angle = fy.atan2(fx) + PI;
@@ -50,22 +51,13 @@ fn color_selector_color(fx: f32, fy: f32) -> Option<Color> {
     if radius < RSATURATED {
         let x = 1.0 - radius / RSATURATED;
         let extra = x * (1.0 - (x - 1.0).powi(4));
-        let rgb = rgb.map(|c| c * (1.0 - extra) + extra);
-        Some(Color {
-            r: rgb[0],
-            g: rgb[1],
-            b: rgb[2],
-            a: 1.0,
-        })
+        let rgb = rgb.map(|c| ((c * (1.0 - extra) + extra) * 255.0) as u8);
+        Some([rgb[0], rgb[1], rgb[2], 255])
     } else if radius <= 1.0 {
         let x = 1.0 - (radius - RSATURATED) / (1.0 - RSATURATED);
         let r = x * (1.0 - (1.0 - x).powi(2));
-        Some(Color {
-            r: r * rgb[0],
-            g: r * rgb[1],
-            b: r * rgb[2],
-            a: 1.0,
-        })
+        let rgb = rgb.map(|c| (r * c * 255.0) as u8);
+        Some([rgb[0], rgb[1], rgb[2], 255])
     } else {
         None
     }
@@ -119,7 +111,7 @@ impl Drawing {
                 if let Some(c) = color_selector_color(fx, fy) {
                     let x = fx * w + swidth - w;
                     let y = fy * h + sheight - h;
-                    draw_rectangle(x, y, dx, dy, c);
+                    draw_rectangle(x, y, dx, dy, Color::from_rgba(c[0], c[1], c[2], c[3]));
                 }
             }
         }
@@ -163,16 +155,16 @@ impl Drawing {
         }
         for (i, l) in self.layers.iter().enumerate() {
             let y = bottom_layer_y - i as f32 * HEIGHT;
-            draw_rectangle(0.0, y, WIDTH, HEIGHT, l.color);
+            draw_rectangle(0.0, y, WIDTH, HEIGHT, l.get_color());
             draw_rectangle(
                 0.3 * WIDTH,
                 y + 0.3 * HEIGHT,
                 WIDTH * 0.4,
                 HEIGHT * 0.4,
-                if l.fill_color.a == 0.0 {
+                if l.fill_color[3] == 0 {
                     BLACK
                 } else {
-                    l.fill_color
+                    l.get_fill_color()
                 },
             );
             outline(y, i == self.current && !self.am_selecting_fill);
@@ -240,17 +232,17 @@ impl Drawing {
                         y - 0.5 * HEIGHT,
                         WIDTH,
                         HEIGHT,
-                        self.layers[self.current].color,
+                        self.layers[self.current].get_color(),
                     );
                     draw_rectangle(
                         0.3 * WIDTH,
                         y - 0.2 * HEIGHT,
                         WIDTH * 0.4,
                         HEIGHT * 0.4,
-                        if self.layers[self.current].fill_color.a == 0.0 {
+                        if self.layers[self.current].fill_color[3] == 0 {
                             BLACK
                         } else {
-                            self.layers[self.current].fill_color
+                            self.layers[self.current].get_fill_color()
                         },
                     );
                     outline(y - 0.5 * HEIGHT, true);
@@ -315,6 +307,18 @@ struct Drawing {
 
 #[macroquad::main(conf)]
 async fn main() {
+    let mut bitmap = Image::gen_image_color(
+        screen_width() as u16,
+        screen_height() as u16,
+        Color {
+            r: 0.0,
+            g: 0.0,
+            b: 0.0,
+            a: 0.0,
+        },
+    );
+    let texture = Texture2D::from_image(&bitmap);
+
     let mut old_pos: Option<Vec2> = None;
     let mut drawing = Drawing {
         am_animating: false,
@@ -339,9 +343,15 @@ async fn main() {
             drawing.time = (started.elapsed().as_secs_f32() * 0.2) % 1.0;
         }
 
-        for l in drawing.layers.iter_mut() {
-            draw_texture(l.texture(drawing.time), 0.0, 0.0, l.color);
+        for b in bitmap.get_image_data_mut().iter_mut() {
+            *b = [0; 4];
         }
+        for l in drawing.layers.iter_mut() {
+            l.draw(drawing.time, bitmap.get_image_data_mut());
+        }
+        texture.update(&bitmap);
+        draw_texture(texture, 0.0, 0.0, WHITE);
+
         let animation_button_selected = drawing.animation_button();
         if animation_button_selected {
             started = Instant::now();

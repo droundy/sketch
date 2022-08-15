@@ -23,8 +23,8 @@ struct Bitmap {
 }
 
 pub struct Layer {
-    pub color: Color,
-    pub fill_color: Color,
+    pub color: [u8; 4],
+    pub fill_color: [u8; 4],
     image: Image,
     texture: Texture2D,
     keyframes: Vec<Bitmap>,
@@ -45,12 +45,7 @@ impl Layer {
         );
         Layer {
             color: random_color(),
-            fill_color: Color {
-                r: 0.0,
-                g: 0.0,
-                b: 0.0,
-                a: 0.0,
-            },
+            fill_color: [0; 4],
             image: bitmap.clone(),
             texture: Texture2D::from_image(&bitmap),
             keyframes: vec![Bitmap {
@@ -61,6 +56,17 @@ impl Layer {
             }],
             tweens: HashMap::new(),
         }
+    }
+    pub fn get_color(&self) -> Color {
+        Color::from_rgba(self.color[0], self.color[1], self.color[2], self.color[3])
+    }
+    pub fn get_fill_color(&self) -> Color {
+        Color::from_rgba(
+            self.fill_color[0],
+            self.fill_color[1],
+            self.fill_color[2],
+            self.fill_color[3],
+        )
     }
     pub fn handle_modified_bitmap(&mut self, time: f32) {
         let which = self.closest_frame(time);
@@ -77,12 +83,27 @@ impl Layer {
             }
         }
         k.center = center / num as f32;
-        k.texture.update(&k.bitmap);
+        let mut img = k.bitmap.clone();
+        for p in img.get_image_data_mut() {
+            if p[3] > 0 {
+                *p = self.color;
+            }
+        }
+        k.texture.update(&img);
     }
-    pub fn texture(&mut self, time: f32) -> Texture2D {
+    pub fn draw(&mut self, time: f32, pixels: &mut [[u8; 4]]) {
         let (before, after) = self.closest_frames(time);
         if before == after {
-            self.keyframes[before].texture
+            for (p, out) in self.keyframes[before]
+                .bitmap
+                .get_image_data()
+                .iter()
+                .zip(pixels.iter_mut())
+            {
+                if p[3] != 0 {
+                    *out = self.color;
+                }
+            }
         } else {
             if self.tweens.get(&(before, after)).is_none() {
                 let before_pixels = self.keyframes[before]
@@ -103,20 +124,13 @@ impl Layer {
                     Tween::new(self.image.width(), before_pixels, after_pixels),
                 );
             }
-            if let Some(tween) = self.tweens.get_mut(&(before, after)) {
-                for p in self.image.get_image_data_mut().iter_mut() {
-                    *p = [0; 4];
-                }
-                let fraction = (time - self.keyframes[before].time)
-                    / (self.keyframes[after].time - self.keyframes[before].time);
-                tween.draw(fraction, [255; 4], self.image.get_image_data_mut());
-                self.texture.update(&self.image);
-                self.texture
-            } else {
-                unreachable!()
-            }
+            let tween = self.tweens.get_mut(&(before, after)).unwrap();
+            let fraction = (time - self.keyframes[before].time)
+                / (self.keyframes[after].time - self.keyframes[before].time);
+            tween.draw(fraction, self.color, pixels);
         }
     }
+
     pub fn closest_time(&self, time: f32) -> f32 {
         self.keyframes[self.closest_frame(time)].time
     }
@@ -192,7 +206,7 @@ impl Layer {
                 frame.texture,
                 x,
                 THEIGHT * 0.5,
-                self.color,
+                self.get_color(),
                 DrawTextureParams {
                     dest_size: Some(Vec2::new(FRAME_WIDTH, THEIGHT)),
                     ..Default::default()
@@ -251,7 +265,7 @@ impl Layer {
                         self.keyframes[drag_frame].texture,
                         x,
                         THEIGHT * 0.5,
-                        self.color,
+                        self.get_color(),
                         DrawTextureParams {
                             dest_size: Some(Vec2::new(FRAME_WIDTH, THEIGHT)),
                             ..Default::default()
@@ -282,7 +296,10 @@ impl Layer {
                 draw_line(pos.0 - 10.0, THEIGHT, pos.0 + 10.0, THEIGHT, 4.0, GRAY);
                 draw_line(pos.0, THEIGHT - 10.0, pos.0, THEIGHT + 10.0, 4.0, GRAY);
                 if mouse_released {
-                    self.texture(time);
+                    let mut img = self.image.clone();
+                    self.draw(time, img.get_image_data_mut());
+                    self.texture.update(&img);
+
                     let mut bitmap = self.image.clone();
                     let times = self.closest_frames(time);
                     if times.0 == times.1 {
@@ -304,13 +321,8 @@ impl Layer {
     }
 }
 
-fn random_color() -> Color {
-    Color {
-        r: rand::random(),
-        g: rand::random(),
-        b: rand::random(),
-        a: 1.0,
-    }
+fn random_color() -> [u8; 4] {
+    [rand::random(), rand::random(), rand::random(), 255]
 }
 
 pub fn clamp(min: f32, max: f32, val: f32) -> f32 {
