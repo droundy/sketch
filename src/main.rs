@@ -3,8 +3,9 @@ use std::{f32::consts::PI, sync::atomic::AtomicBool};
 
 use macroquad::prelude::{
     draw_circle, draw_circle_lines, draw_line, draw_rectangle, draw_rectangle_lines, draw_texture,
-    is_key_pressed, is_mouse_button_down, is_mouse_button_pressed, mouse_position, next_frame,
-    screen_height, screen_width, Color, Conf, KeyCode, MouseButton, Vec2, BLACK, GRAY, WHITE,
+    is_key_pressed, is_mouse_button_down, is_mouse_button_pressed, is_mouse_button_released,
+    mouse_position, next_frame, screen_height, screen_width, Color, Conf, KeyCode, MouseButton,
+    Vec2, BLACK, GRAY, WHITE,
 };
 use macroquad::shapes::draw_poly;
 use macroquad::ui::root_ui;
@@ -144,7 +145,8 @@ impl Drawing {
     fn layer_selector(&mut self) -> bool {
         const WIDTH: f32 = 50.0;
         const HEIGHT: f32 = 40.0;
-        const NUM_TOOLS: usize = 3;
+        let bottom_layer_index = (screen_height() / HEIGHT) as usize - 1;
+        let bottom_layer_y = bottom_layer_index as f32 * HEIGHT;
         fn outline(y: f32, selected: bool) {
             draw_rectangle_lines(0.0, y, WIDTH, HEIGHT, 5.0, BLACK);
             draw_rectangle_lines(
@@ -157,11 +159,11 @@ impl Drawing {
             );
         }
         for (i, l) in self.layers.iter().enumerate() {
-            let y = (NUM_TOOLS + 1 + i) as f32 * HEIGHT;
+            let y = bottom_layer_y - i as f32 * HEIGHT;
             draw_rectangle(0.0, y, WIDTH, HEIGHT, l.color);
             outline(y, i == self.current);
         }
-        let y = (NUM_TOOLS + 1 + self.layers.len()) as f32 * HEIGHT;
+        let y = bottom_layer_y - self.layers.len() as f32 * HEIGHT;
         draw_rectangle(0.0, y, WIDTH, HEIGHT, BLACK);
         outline(y, false);
         draw_line(
@@ -180,6 +182,7 @@ impl Drawing {
             5.0,
             WHITE,
         );
+        // Now draw the tool buttons.
         let y = 0.0;
         outline(y, self.tool == Tool::BigPen);
         draw_circle(WIDTH * 0.5, y + HEIGHT * 0.5, 10.0, WHITE);
@@ -187,29 +190,62 @@ impl Drawing {
         draw_circle(WIDTH * 0.5, y + HEIGHT * 1.5, 2.0, WHITE);
         outline(y + 2.0 * HEIGHT, self.tool == Tool::Eraser);
         draw_circle_lines(WIDTH * 0.5, y + HEIGHT * 2.5, 10.0, 2.0, WHITE);
-        if is_mouse_button_down(MouseButton::Left) || is_mouse_button_pressed(MouseButton::Left) {
+        if let Some(original_layer) = self.am_dragging_layer {
+            if is_mouse_button_released(MouseButton::Left) {
+                self.am_dragging_layer = None;
+            } else {
+                let (_, y) = mouse_position();
+                let idx = (y / HEIGHT) as usize;
+                let idx = if idx > bottom_layer_index {
+                    0
+                } else {
+                    bottom_layer_index - idx
+                };
+                let idx = std::cmp::min(idx, self.layers.len() - 1);
+                if idx != original_layer {
+                    // Only animate dragging if we have dragged off the original layer.
+                    draw_rectangle(
+                        0.0,
+                        bottom_layer_y - self.current as f32 * HEIGHT,
+                        WIDTH,
+                        HEIGHT,
+                        BLACK,
+                    );
+                    draw_rectangle(
+                        0.0,
+                        y - 0.5 * HEIGHT,
+                        WIDTH,
+                        HEIGHT,
+                        self.layers[self.current].color,
+                    );
+                    outline(y - 0.5 * HEIGHT, true);
+                }
+                if self.current != idx {
+                    let t = self.layers.remove(self.current);
+                    self.layers.insert(idx, t);
+                    self.current = idx;
+                }
+            }
+            return true;
+        } else if is_mouse_button_pressed(MouseButton::Left) {
             let (x, y) = mouse_position();
             let y = (y / HEIGHT) as usize;
             if x < WIDTH {
-                if is_mouse_button_pressed(MouseButton::Left) {
-                    if y == NUM_TOOLS + 1 + self.layers.len() {
-                        self.layers.push(Layer::new(self.time));
-                        self.current = self.layers.len() - 1;
-                        if self.tool == Tool::Eraser {
-                            self.tool = Tool::BigPen;
-                        }
-                    } else if y > NUM_TOOLS && y < NUM_TOOLS + 1 + self.layers.len() {
-                        self.current = y - NUM_TOOLS - 1;
-                        if self.tool == Tool::Eraser {
-                            self.tool = Tool::BigPen;
-                        }
-                    } else if y == 0 {
+                if y == 0 {
+                    self.tool = Tool::BigPen;
+                } else if y == 1 {
+                    self.tool = Tool::LittlePen;
+                } else if y == 2 {
+                    self.tool = Tool::Eraser;
+                } else if y == bottom_layer_index - self.layers.len() {
+                    self.layers.push(Layer::new(self.time));
+                    self.current = self.layers.len() - 1;
+                    if self.tool == Tool::Eraser {
                         self.tool = Tool::BigPen;
-                    } else if y == 1 {
-                        self.tool = Tool::LittlePen;
-                    } else if y == 2 {
-                        self.tool = Tool::Eraser;
                     }
+                } else if y > bottom_layer_index - self.layers.len() {
+                    self.am_dragging_layer = Some(bottom_layer_index - y);
+                    self.current = bottom_layer_index - y;
                 }
                 return true;
             }
@@ -227,6 +263,7 @@ enum Tool {
 
 struct Drawing {
     am_animating: bool,
+    am_dragging_layer: Option<usize>,
     current: usize,
     height: u16,
     width: u16,
@@ -240,6 +277,7 @@ async fn main() {
     let mut old_pos: Option<Vec2> = None;
     let mut drawing = Drawing {
         am_animating: false,
+        am_dragging_layer: None,
         time: 0.0,
         current: 0,
         tool: Tool::BigPen,
