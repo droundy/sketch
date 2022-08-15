@@ -24,6 +24,7 @@ struct Bitmap {
 
 pub struct Layer {
     pub color: Color,
+    pub fill_color: Color,
     image: Image,
     texture: Texture2D,
     keyframes: Vec<Bitmap>,
@@ -44,6 +45,12 @@ impl Layer {
         );
         Layer {
             color: random_color(),
+            fill_color: Color {
+                r: 0.0,
+                g: 0.0,
+                b: 0.0,
+                a: 0.0,
+            },
             image: bitmap.clone(),
             texture: Texture2D::from_image(&bitmap),
             keyframes: vec![Bitmap {

@@ -71,44 +71,6 @@ fn color_selector_color(fx: f32, fy: f32) -> Option<Color> {
     }
 }
 
-fn color_selector(color: &mut Color) -> bool {
-    let swidth = screen_width();
-    let sheight = screen_height();
-
-    let w = 200.0;
-    let h = 200.0;
-    let dx = w * 0.01;
-    let dy = h * 0.01;
-    for i in 0..100 {
-        for j in 0..100 {
-            let fx = i as f32 * 0.01;
-            let fy = j as f32 * 0.01;
-            if let Some(c) = color_selector_color(fx, fy) {
-                let x = fx * w + swidth - w;
-                let y = fy * h + sheight - h;
-                draw_rectangle(x, y, dx, dy, c);
-            }
-        }
-    }
-
-    static AM_DRAGGING: AtomicBool = AtomicBool::new(false);
-    if is_mouse_button_down(MouseButton::Left) {
-        let pos = mouse_position();
-        let fx = (pos.0 + w - swidth) / w;
-        let fy = (pos.1 + h - sheight) / h;
-        if let Some(c) = color_selector_color(fx, fy) {
-            *color = c;
-            AM_DRAGGING.store(true, std::sync::atomic::Ordering::Relaxed);
-            return true;
-        } else if AM_DRAGGING.load(std::sync::atomic::Ordering::Relaxed) {
-            return true;
-        }
-    } else {
-        AM_DRAGGING.store(false, std::sync::atomic::Ordering::Relaxed);
-    }
-    false
-}
-
 impl Drawing {
     fn frame_selector(&mut self) -> bool {
         self.layers[self.current].frame_selector(&mut self.time)
@@ -142,6 +104,47 @@ impl Drawing {
             false
         }
     }
+    fn color_selector(&mut self) -> bool {
+        let swidth = screen_width();
+        let sheight = screen_height();
+
+        let w = 200.0;
+        let h = 200.0;
+        let dx = w * 0.01;
+        let dy = h * 0.01;
+        for i in 0..100 {
+            for j in 0..100 {
+                let fx = i as f32 * 0.01;
+                let fy = j as f32 * 0.01;
+                if let Some(c) = color_selector_color(fx, fy) {
+                    let x = fx * w + swidth - w;
+                    let y = fy * h + sheight - h;
+                    draw_rectangle(x, y, dx, dy, c);
+                }
+            }
+        }
+
+        static AM_DRAGGING: AtomicBool = AtomicBool::new(false);
+        if is_mouse_button_down(MouseButton::Left) {
+            let pos = mouse_position();
+            let fx = (pos.0 + w - swidth) / w;
+            let fy = (pos.1 + h - sheight) / h;
+            if let Some(c) = color_selector_color(fx, fy) {
+                if self.am_selecting_fill {
+                    self.layers[self.current].fill_color = c;
+                } else {
+                    self.layers[self.current].color = c;
+                }
+                AM_DRAGGING.store(true, std::sync::atomic::Ordering::Relaxed);
+                return true;
+            } else if AM_DRAGGING.load(std::sync::atomic::Ordering::Relaxed) {
+                return true;
+            }
+        } else {
+            AM_DRAGGING.store(false, std::sync::atomic::Ordering::Relaxed);
+        }
+        false
+    }
     fn layer_selector(&mut self) -> bool {
         const WIDTH: f32 = 50.0;
         const HEIGHT: f32 = 40.0;
@@ -161,7 +164,28 @@ impl Drawing {
         for (i, l) in self.layers.iter().enumerate() {
             let y = bottom_layer_y - i as f32 * HEIGHT;
             draw_rectangle(0.0, y, WIDTH, HEIGHT, l.color);
-            outline(y, i == self.current);
+            draw_rectangle(
+                0.3 * WIDTH,
+                y + 0.3 * HEIGHT,
+                WIDTH * 0.4,
+                HEIGHT * 0.4,
+                if l.fill_color.a == 0.0 {
+                    BLACK
+                } else {
+                    l.fill_color
+                },
+            );
+            outline(y, i == self.current && !self.am_selecting_fill);
+            if self.am_selecting_fill && i == self.current {
+                draw_rectangle_lines(
+                    0.3 * WIDTH,
+                    y + 0.3 * HEIGHT,
+                    WIDTH * 0.4,
+                    HEIGHT * 0.4,
+                    4.0,
+                    WHITE,
+                );
+            }
         }
         let y = bottom_layer_y - self.layers.len() as f32 * HEIGHT;
         draw_rectangle(0.0, y, WIDTH, HEIGHT, BLACK);
@@ -218,6 +242,17 @@ impl Drawing {
                         HEIGHT,
                         self.layers[self.current].color,
                     );
+                    draw_rectangle(
+                        0.3 * WIDTH,
+                        y - 0.2 * HEIGHT,
+                        WIDTH * 0.4,
+                        HEIGHT * 0.4,
+                        if self.layers[self.current].fill_color.a == 0.0 {
+                            BLACK
+                        } else {
+                            self.layers[self.current].fill_color
+                        },
+                    );
                     outline(y - 0.5 * HEIGHT, true);
                 }
                 if self.current != idx {
@@ -243,9 +278,14 @@ impl Drawing {
                     if self.tool == Tool::Eraser {
                         self.tool = Tool::BigPen;
                     }
+                    self.am_selecting_fill = false;
                 } else if y > bottom_layer_index - self.layers.len() {
                     self.am_dragging_layer = Some(bottom_layer_index - y);
                     self.current = bottom_layer_index - y;
+                    let (x, y) = mouse_position();
+                    let y = y % HEIGHT;
+                    self.am_selecting_fill =
+                        x > 0.3 * WIDTH && x < 0.7 * WIDTH && y > 0.3 * HEIGHT && y < 0.7 * HEIGHT;
                 }
                 return true;
             }
@@ -264,6 +304,7 @@ enum Tool {
 struct Drawing {
     am_animating: bool,
     am_dragging_layer: Option<usize>,
+    am_selecting_fill: bool,
     current: usize,
     height: u16,
     width: u16,
@@ -278,6 +319,7 @@ async fn main() {
     let mut drawing = Drawing {
         am_animating: false,
         am_dragging_layer: None,
+        am_selecting_fill: false,
         time: 0.0,
         current: 0,
         tool: Tool::BigPen,
@@ -304,7 +346,7 @@ async fn main() {
         if animation_button_selected {
             started = Instant::now();
         }
-        let color_selected = color_selector(&mut drawing.layers[drawing.current].color);
+        let color_selected = drawing.color_selector();
         let frame_selected = drawing.frame_selector();
         let layer_selected = drawing.layer_selector();
         if !root_ui().is_mouse_captured()
