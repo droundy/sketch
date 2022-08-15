@@ -38,16 +38,9 @@ impl Tween {
     }
 
     /// Draw this Tween to the pixel buffer
-    ///
-    /// FIXME: Need to respect the transform!
-    pub fn draw(&self, fraction: f32, color: [u8; 4], pixels: &mut [[u8; 4]]) {
+    pub fn draw(&self, fraction: f32, pixels: &mut [bool]) {
         for c in self.chunks.iter() {
-            c.draw(fraction, color, pixels);
-        }
-    }
-    pub fn draw_bool(&self, fraction: f32, pixels: &mut [bool]) {
-        for c in self.chunks.iter() {
-            c.draw_bool(fraction, pixels);
+            c.draw(fraction, pixels);
         }
     }
 }
@@ -170,28 +163,7 @@ impl ChunkTween {
     }
 
     /// Draw this ChunkTween to the pixel buffer
-    ///
-    /// FIXME: Need to respect the transform!
-    fn draw(&self, fraction: f32, color: [u8; 4], pixels: &mut [[u8; 4]]) {
-        assert!(fraction >= 0.0);
-        assert!(fraction <= 1.0);
-        let reverse_transform = (1.0 - fraction) * self.transform.reverse();
-        let transform = fraction * self.transform;
-        for &(b, a) in self.connections.iter() {
-            let b = transform * Vec2::new((b % self.w) as f32, (b / self.w) as f32);
-            let a = reverse_transform * Vec2::new((a % self.w) as f32, (a / self.w) as f32);
-            let p = fraction * a + (1.0 - fraction) * b;
-            let idx = p.x.round() as usize + (p.y.round() as usize) * self.w;
-            if let Some(p) = pixels.get_mut(idx) {
-                *p = color;
-            }
-            // let idx = b.x.round() as usize - 100 + (b.y.round() as usize) * self.w;
-            // if idx < pixels.len() {
-            //     pixels[idx] = [255, 0, 0, 255];
-            // }
-        }
-    }
-    fn draw_bool(&self, fraction: f32, pixels: &mut [bool]) {
+    fn draw(&self, fraction: f32, pixels: &mut [bool]) {
         assert!(fraction >= 0.0);
         assert!(fraction <= 1.0);
         let reverse_transform = (1.0 - fraction) * self.transform.reverse();
