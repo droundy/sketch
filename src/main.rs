@@ -88,7 +88,7 @@ impl Drawing {
             && (y - center.y).abs() < 25.0
         {
             self.am_animating = !self.am_animating;
-            if !self.am_animating {
+            if !self.am_animating && !is_mouse_button_released(MouseButton::Left) {
                 self.time = self.layers[self.current].closest_time(self.time);
             }
             true
