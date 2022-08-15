@@ -45,6 +45,11 @@ impl Tween {
             c.draw(fraction, color, pixels);
         }
     }
+    pub fn draw_bool(&self, fraction: f32, pixels: &mut [bool]) {
+        for c in self.chunks.iter() {
+            c.draw_bool(fraction, pixels);
+        }
+    }
 }
 
 struct ChunkTween {
@@ -179,6 +184,25 @@ impl ChunkTween {
             let idx = p.x.round() as usize + (p.y.round() as usize) * self.w;
             if let Some(p) = pixels.get_mut(idx) {
                 *p = color;
+            }
+            // let idx = b.x.round() as usize - 100 + (b.y.round() as usize) * self.w;
+            // if idx < pixels.len() {
+            //     pixels[idx] = [255, 0, 0, 255];
+            // }
+        }
+    }
+    fn draw_bool(&self, fraction: f32, pixels: &mut [bool]) {
+        assert!(fraction >= 0.0);
+        assert!(fraction <= 1.0);
+        let reverse_transform = (1.0 - fraction) * self.transform.reverse();
+        let transform = fraction * self.transform;
+        for &(b, a) in self.connections.iter() {
+            let b = transform * Vec2::new((b % self.w) as f32, (b / self.w) as f32);
+            let a = reverse_transform * Vec2::new((a % self.w) as f32, (a / self.w) as f32);
+            let p = fraction * a + (1.0 - fraction) * b;
+            let idx = p.x.round() as usize + (p.y.round() as usize) * self.w;
+            if let Some(p) = pixels.get_mut(idx) {
+                *p = true;
             }
             // let idx = b.x.round() as usize - 100 + (b.y.round() as usize) * self.w;
             // if idx < pixels.len() {

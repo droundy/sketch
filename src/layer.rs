@@ -93,15 +93,16 @@ impl Layer {
     }
     pub fn draw(&mut self, time: f32, pixels: &mut [[u8; 4]]) {
         let (before, after) = self.closest_frames(time);
+        let mut bitmap = vec![false; self.keyframes[before].bitmap.get_image_data().len()];
         if before == after {
             for (p, out) in self.keyframes[before]
                 .bitmap
                 .get_image_data()
                 .iter()
-                .zip(pixels.iter_mut())
+                .zip(bitmap.iter_mut())
             {
                 if p[3] != 0 {
-                    *out = self.color;
+                    *out = true;
                 }
             }
         } else {
@@ -127,7 +128,10 @@ impl Layer {
             let tween = self.tweens.get_mut(&(before, after)).unwrap();
             let fraction = (time - self.keyframes[before].time)
                 / (self.keyframes[after].time - self.keyframes[before].time);
-            tween.draw(fraction, self.color, pixels);
+            tween.draw_bool(fraction, &mut bitmap);
+        }
+        for (_, out) in bitmap.iter().zip(pixels).filter(|(b,_)| **b) {
+            *out = self.color;
         }
     }
 
