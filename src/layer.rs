@@ -19,7 +19,6 @@ struct Bitmap {
     time: f32,
     bitmap: Image,
     texture: Texture2D,
-    center: Vec2,
 }
 
 pub struct Layer {
@@ -50,7 +49,6 @@ impl Layer {
             texture: Texture2D::from_image(&bitmap),
             keyframes: vec![Bitmap {
                 time,
-                center: Vec2::ZERO,
                 texture: Texture2D::from_image(&bitmap),
                 bitmap,
             }],
@@ -72,17 +70,6 @@ impl Layer {
         let which = self.closest_frame(time);
         self.tweens.retain(|k, _| k.0 != which && k.1 != which);
         let k = &mut self.keyframes[which];
-        let mut center = Vec2::ZERO;
-        let mut num = 0;
-        for (idx, b) in k.bitmap.get_image_data().iter().enumerate() {
-            if b[3] > 0 {
-                let i = idx % k.bitmap.width();
-                let j = idx / k.bitmap.width();
-                center += Vec2::new(i as f32, j as f32);
-                num += 1;
-            }
-        }
-        k.center = center / num as f32;
         let mut img = k.bitmap.clone();
         for p in img.get_image_data_mut() {
             if p[3] > 0 {
@@ -339,7 +326,6 @@ impl Layer {
                     }
                     self.keyframes.push(Bitmap {
                         time,
-                        center: Vec2::ZERO,
                         texture: Texture2D::from_image(&bitmap),
                         bitmap,
                     });
