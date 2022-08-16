@@ -14,6 +14,7 @@ use macroquad::ui::root_ui;
 mod layer;
 mod tween;
 use layer::Layer;
+use tinyset::SetUsize;
 
 fn conf() -> Conf {
     Conf {
@@ -64,11 +65,15 @@ fn color_selector_color(fx: f32, fy: f32) -> Option<[u8; 4]> {
 }
 
 impl Drawing {
+    fn pen_drew(&mut self, pixels: SetUsize) {
+        if self.tool == Tool::Eraser {
+            self.layers[self.current].erase_pixels(self.time, pixels);
+        } else {
+            self.layers[self.current].add_pixels(self.time, pixels);
+        }
+    }
     fn frame_selector(&mut self) -> bool {
         self.layers[self.current].frame_selector(&mut self.time)
-    }
-    fn get_frame_data_mut(&mut self) -> &mut [[u8; 4]] {
-        self.layers[self.current].get_frame_data_mut(self.time)
     }
     fn handle_modified_bitmap(&mut self) {
         self.layers[self.current].handle_modified_bitmap(self.time);
@@ -374,12 +379,7 @@ async fn main() {
                     Tool::BigPen => 10.0,
                     Tool::Eraser => 20.0,
                 };
-                let drawn = if drawing.tool == Tool::Eraser {
-                    [0; 4]
-                } else {
-                    [255; 4]
-                };
-                let data = drawing.get_frame_data_mut();
+                let mut drawn = SetUsize::new();
                 if let Some(old) = old_pos {
                     let parallel = (old - pos).normalize();
                     let orthog = Vec2::new(parallel.y, -parallel.x);
@@ -415,7 +415,7 @@ async fn main() {
                                 && here.dot(parallel) > par_start
                                 && here.dot(parallel) < par_stop
                             {
-                                data[x + y * width] = drawn;
+                                drawn.insert(x + y * width);
                             }
                         }
                     }
@@ -432,11 +432,12 @@ async fn main() {
                     for y in y_start..y_stop {
                         if (x as f32 - pos.x).powi(2) + (y as f32 - pos.y).powi(2) < radius.powi(2)
                         {
-                            data[x + y * width] = drawn;
+                            drawn.insert(x + y * width);
                         }
                         old_pos = Some(pos);
                     }
                 }
+                drawing.pen_drew(drawn);
                 drawing.handle_modified_bitmap();
             } else {
                 old_pos = None;

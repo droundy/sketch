@@ -2,6 +2,7 @@ use std::ops::Mul;
 
 use macroquad::prelude::Vec2;
 use ordered_float::OrderedFloat;
+use tinyset::SetUsize;
 
 /// A connection between two keyframes.
 pub struct Tween {
@@ -9,7 +10,7 @@ pub struct Tween {
 }
 
 impl Tween {
-    pub fn new(w: usize, before: Vec<bool>, after: Vec<bool>) -> Self {
+    pub fn new(w: usize, before: SetUsize, after: SetUsize) -> Self {
         let mut chunks = Vec::new();
 
         let mut before_chunks = Chunk::find(w, before);
@@ -61,14 +62,12 @@ impl ChunkTween {
         let mut before_positions = before
             .points
             .iter()
-            .copied()
             .map(|i| (i, Vec2::new((i % w) as f32, (i / w) as f32)))
             .map(|(i, v)| (i, transform * v))
             .collect::<Vec<_>>();
         let mut after_positions = after
             .points
             .iter()
-            .copied()
             .map(|i| (i, Vec2::new((i % w) as f32, (i / w) as f32)))
             .collect::<Vec<_>>();
         before_positions.sort_unstable_by_key(|(_, v)| OrderedFloat(v.x));
@@ -184,7 +183,7 @@ impl ChunkTween {
 }
 
 pub struct Chunk {
-    points: Vec<usize>,
+    points: SetUsize,
     center: Vec2,
     area: usize,
     // The major axis length
@@ -196,17 +195,17 @@ pub struct Chunk {
 }
 
 impl Chunk {
-    pub fn find(w: usize, mut pixels: Vec<bool>) -> Vec<Self> {
+    pub fn find(w: usize, mut pixels: SetUsize) -> Vec<Self> {
         let mut out = Vec::new();
         while let Some(points) = contiguous_pixels(w, &mut pixels) {
             out.push(Chunk::new(w, points));
         }
         out
     }
-    pub fn new(w: usize, points: Vec<usize>) -> Self {
+    pub fn new(w: usize, points: SetUsize) -> Self {
         let area = points.len();
         let mut center = Vec2::ZERO;
-        for p in points.iter().copied() {
+        for p in points.iter() {
             let x = (p % w) as f32;
             let y = (p / w) as f32;
             center += Vec2::new(x, y);
@@ -215,7 +214,7 @@ impl Chunk {
         let mut x2 = 0.0;
         let mut y2 = 0.0;
         let mut xy = 0.0;
-        for p in points.iter().copied() {
+        for p in points.iter() {
             let dx = (p % w) as f32 - center.x;
             let dy = (p / w) as f32 - center.y;
             x2 += dx * dx;
@@ -284,31 +283,31 @@ impl Chunk {
     }
 }
 
-fn contiguous_pixels(w: usize, pixels: &mut [bool]) -> Option<Vec<usize>> {
-    let mut out = Vec::new();
+fn contiguous_pixels(w: usize, pixels: &mut SetUsize) -> Option<SetUsize> {
+    let mut out = SetUsize::new();
 
-    let (p, _) = pixels.iter().enumerate().filter(|(_, p)| **p).next()?;
-    pixels[p] = false;
+    let p = pixels.iter().next()?;
+    pixels.remove(p);
     let mut todo = vec![p];
     while let Some(p) = todo.pop() {
-        out.push(p);
+        out.insert(p);
         let x = p % w;
         let y = p / w;
-        if x > 0 && pixels[p - 1] {
+        if x > 0 && pixels.contains(p - 1) {
             todo.push(p - 1);
-            pixels[p - 1] = false;
+            pixels.remove(p - 1);
         }
-        if x < w - 1 && p + 1 < pixels.len() && pixels[p + 1] {
+        if x < w - 1 && p + 1 < pixels.len() && pixels.contains(p + 1) {
             todo.push(p + 1);
-            pixels[p + 1] = false;
+            pixels.remove(p + 1);
         }
-        if y > 0 && pixels[p - w] {
+        if y > 0 && pixels.contains(p - w) {
             todo.push(p - w);
-            pixels[p - w] = false;
+            pixels.remove(p - w);
         }
-        if y < w - 1 && p + w < pixels.len() && pixels[p + w] {
+        if y < w - 1 && p + w < pixels.len() && pixels.contains(p + w) {
             todo.push(p + w);
-            pixels[p + w] = false;
+            pixels.remove(p + w);
         }
     }
     Some(out)
@@ -316,7 +315,7 @@ fn contiguous_pixels(w: usize, pixels: &mut [bool]) -> Option<Vec<usize>> {
 
 #[test]
 fn chunks_test() {
-    let pixels = vec![false, false, true, false, false, true, false, false, true];
+    let pixels = SetUsize::from_iter([2, 5, 8]);
     let w = 3;
     let chunks = Chunk::find(w, pixels);
     assert_eq!(1, chunks.len());
@@ -326,7 +325,7 @@ fn chunks_test() {
     assert_eq!(2.0_f32.sqrt(), chunks[0].major);
     assert_eq!(0.0, chunks[0].minor);
 
-    let pixels = vec![false, false, true, true, false, true, true, false, true];
+    let pixels = SetUsize::from_iter([2, 3, 5, 6, 8]);
     let w = 3;
     let chunks = Chunk::find(w, pixels);
     assert_eq!(2, chunks.len());

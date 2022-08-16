@@ -11,13 +11,15 @@ use macroquad::{
     },
     texture::{draw_texture_ex, DrawTextureParams},
 };
+use tinyset::SetUsize;
 
 use crate::tween::Tween;
 
 #[derive(Clone)]
 struct Bitmap {
     time: f32,
-    bitmap: Image,
+    pixels: SetUsize,
+    fill_pixels: SetUsize,
     texture: Texture2D,
 }
 
@@ -50,7 +52,8 @@ impl Layer {
             keyframes: vec![Bitmap {
                 time,
                 texture: Texture2D::from_image(&bitmap),
-                bitmap,
+                pixels: SetUsize::new(),
+                fill_pixels: SetUsize::new(),
             }],
             tweens: HashMap::new(),
         }
@@ -70,60 +73,21 @@ impl Layer {
         let which = self.closest_frame(time);
         self.tweens.retain(|k, _| k.0 != which && k.1 != which);
         let k = &mut self.keyframes[which];
-        let mut img = k.bitmap.clone();
-        for p in img.get_image_data_mut() {
-            if p[3] > 0 {
-                *p = self.color;
+        let mut img = Image::gen_image_color(
+            self.image.width,
+            self.image.height,
+            Color::from_rgba(0, 0, 0, 0),
+        );
+        {
+            let img = img.get_image_data_mut();
+            let mut outside = vec![false; img.len()];
+            for i in k.pixels.iter() {
+                img[i] = self.color;
+                outside[i] = true;
             }
-        }
-        k.texture.update(&img);
-    }
-    pub fn draw(&mut self, time: f32, pixels: &mut [[u8; 4]]) {
-        let (before, after) = self.closest_frames(time);
-        let mut bitmap = vec![false; self.keyframes[before].bitmap.get_image_data().len()];
-        if before == after {
-            for (p, out) in self.keyframes[before]
-                .bitmap
-                .get_image_data()
-                .iter()
-                .zip(bitmap.iter_mut())
-            {
-                if p[3] != 0 {
-                    *out = true;
-                }
-            }
-        } else {
-            if self.tweens.get(&(before, after)).is_none() {
-                let before_pixels = self.keyframes[before]
-                    .bitmap
-                    .get_image_data()
-                    .iter()
-                    .map(|x| x[3] > 0)
-                    .collect::<Vec<_>>();
-                let after_pixels = self.keyframes[after]
-                    .bitmap
-                    .get_image_data()
-                    .iter()
-                    .map(|x| x[3] > 0)
-                    .collect::<Vec<_>>();
 
-                self.tweens.insert(
-                    (before, after),
-                    Tween::new(self.image.width(), before_pixels, after_pixels),
-                );
-            }
-            let tween = self.tweens.get_mut(&(before, after)).unwrap();
-            let fraction = (time - self.keyframes[before].time)
-                / (self.keyframes[after].time - self.keyframes[before].time);
-            tween.draw(fraction, &mut bitmap);
-        }
-        for (_, out) in bitmap.iter().zip(pixels.iter_mut()).filter(|(b, _)| **b) {
-            *out = self.color;
-        }
-        if self.fill_color[3] > 0 {
-            let mut outside = bitmap.clone();
             let mut todo = vec![0];
-            let w = self.keyframes[before].bitmap.width();
+            let w = self.image.width();
             outside[0] = true;
             while let Some(i) = todo.pop() {
                 if i > 0 && !outside[i - 1] {
@@ -143,8 +107,77 @@ impl Layer {
                     todo.push(i + w);
                 }
             }
-            for (_, out) in outside.iter().zip(pixels.iter_mut()).filter(|(b, _)| !**b) {
-                *out = self.fill_color;
+            k.fill_pixels = SetUsize::from_iter(
+                outside
+                    .into_iter()
+                    .enumerate()
+                    .filter(|(_, b)| !*b)
+                    .map(|x| x.0),
+            );
+            if self.fill_color[3] > 0 {
+                for p in k.fill_pixels.iter() {
+                    img[p] = self.fill_color;
+                }
+            }
+        }
+        k.texture.update(&img);
+    }
+    pub fn draw(&mut self, time: f32, pixels: &mut [[u8; 4]]) {
+        let (before, after) = self.closest_frames(time);
+        let mut bitmap = vec![false; self.image.get_image_data().len()];
+        if before == after {
+            for i in self.keyframes[before].pixels.iter() {
+                pixels[i] = self.color;
+            }
+            if self.fill_color[3] > 0 {
+                for i in self.keyframes[before].fill_pixels.iter() {
+                    pixels[i] = self.fill_color;
+                }
+            }
+        } else {
+            if self.tweens.get(&(before, after)).is_none() {
+                self.tweens.insert(
+                    (before, after),
+                    Tween::new(
+                        self.image.width(),
+                        self.keyframes[before].pixels.clone(),
+                        self.keyframes[after].pixels.clone(),
+                    ),
+                );
+            }
+            let tween = self.tweens.get_mut(&(before, after)).unwrap();
+            let fraction = (time - self.keyframes[before].time)
+                / (self.keyframes[after].time - self.keyframes[before].time);
+            tween.draw(fraction, &mut bitmap);
+            for (_, out) in bitmap.iter().zip(pixels.iter_mut()).filter(|(b, _)| **b) {
+                *out = self.color;
+            }
+            if self.fill_color[3] > 0 {
+                let mut outside = bitmap.clone();
+                let mut todo = vec![0];
+                let w = self.image.width();
+                outside[0] = true;
+                while let Some(i) = todo.pop() {
+                    if i > 0 && !outside[i - 1] {
+                        outside[i - 1] = true;
+                        todo.push(i - 1);
+                    }
+                    if i + 1 < outside.len() && !outside[i + 1] {
+                        outside[i + 1] = true;
+                        todo.push(i + 1);
+                    }
+                    if i >= w && !outside[i - w] {
+                        outside[i - w] = true;
+                        todo.push(i - w);
+                    }
+                    if i + w < outside.len() && !outside[i + w] {
+                        outside[i + w] = true;
+                        todo.push(i + w);
+                    }
+                }
+                for (_, out) in outside.iter().zip(pixels.iter_mut()).filter(|(b, _)| !**b) {
+                    *out = self.fill_color;
+                }
             }
         }
     }
@@ -196,9 +229,15 @@ impl Layer {
         }
     }
 
-    pub fn get_frame_data_mut(&mut self, time: f32) -> &mut [[u8; 4]] {
+    pub fn erase_pixels(&mut self, time: f32, pixels: SetUsize) {
         let i = self.closest_frame(time);
-        self.keyframes[i].bitmap.get_image_data_mut()
+        for p in pixels {
+            self.keyframes[i].pixels.remove(p);
+        }
+    }
+    pub fn add_pixels(&mut self, time: f32, pixels: SetUsize) {
+        let i = self.closest_frame(time);
+        self.keyframes[i].pixels.extend(pixels);
     }
 
     pub fn frame_selector(&mut self, now: &mut f32) -> bool {
@@ -318,16 +357,19 @@ impl Layer {
                     self.draw(time, img.get_image_data_mut());
                     self.texture.update(&img);
 
-                    let mut bitmap = self.image.clone();
+                    let mut pixels = SetUsize::new();
+                    let mut fill_pixels = SetUsize::new();
                     let times = self.closest_frames(time);
                     if times.0 == times.1 {
                         // In this case, self.image didn't get updated!
-                        bitmap = self.keyframes[times.0].bitmap.clone();
+                        pixels = self.keyframes[times.0].pixels.clone();
+                        fill_pixels = self.keyframes[times.0].fill_pixels.clone();
                     }
                     self.keyframes.push(Bitmap {
                         time,
-                        texture: Texture2D::from_image(&bitmap),
-                        bitmap,
+                        texture: Texture2D::from_image(&self.image),
+                        pixels,
+                        fill_pixels,
                     });
                     self.handle_modified_bitmap(time);
                     *now = time;
