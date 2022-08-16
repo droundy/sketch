@@ -130,32 +130,32 @@ impl Layer {
                 / (self.keyframes[after].time - self.keyframes[before].time);
             tween.draw(fraction, &mut bitmap);
         }
-        let mut outside = bitmap.clone();
-        let mut todo = vec![0];
-        let w = self.keyframes[before].bitmap.width();
-        outside[0] = true;
-        while let Some(i) = todo.pop() {
-            if i > 0 && !outside[i - 1] {
-                outside[i - 1] = true;
-                todo.push(i - 1);
-            }
-            if i + 1 < outside.len() && !outside[i + 1] {
-                outside[i + 1] = true;
-                todo.push(i + 1);
-            }
-            if i >= w && !outside[i - w] {
-                outside[i - w] = true;
-                todo.push(i - w);
-            }
-            if i + w < outside.len() && !outside[i + w] {
-                outside[i + w] = true;
-                todo.push(i + w);
-            }
-        }
         for (_, out) in bitmap.iter().zip(pixels.iter_mut()).filter(|(b, _)| **b) {
             *out = self.color;
         }
         if self.fill_color[3] > 0 {
+            let mut outside = bitmap.clone();
+            let mut todo = vec![0];
+            let w = self.keyframes[before].bitmap.width();
+            outside[0] = true;
+            while let Some(i) = todo.pop() {
+                if i > 0 && !outside[i - 1] {
+                    outside[i - 1] = true;
+                    todo.push(i - 1);
+                }
+                if i + 1 < outside.len() && !outside[i + 1] {
+                    outside[i + 1] = true;
+                    todo.push(i + 1);
+                }
+                if i >= w && !outside[i - w] {
+                    outside[i - w] = true;
+                    todo.push(i - w);
+                }
+                if i + w < outside.len() && !outside[i + w] {
+                    outside[i + w] = true;
+                    todo.push(i + w);
+                }
+            }
             for (_, out) in outside.iter().zip(pixels.iter_mut()).filter(|(b, _)| !**b) {
                 *out = self.fill_color;
             }
