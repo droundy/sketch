@@ -84,7 +84,8 @@ impl Layer {
         {
             let img = img.get_image_data_mut();
             let mut outside = vec![false; img.len()];
-            for i in k.pixels.iter() {
+            let image_len = img.len();
+            for i in k.pixels.iter().filter(|&i| i < image_len) {
                 img[i] = self.color;
                 outside[i] = true;
             }
@@ -129,7 +130,12 @@ impl Layer {
         let (before, after) = self.closest_frames(time);
         let mut bitmap = vec![false; self.image.get_image_data().len()];
         if before == after {
-            for i in self.keyframes[before].pixels.iter() {
+            let pixels_len = pixels.len();
+            for i in self.keyframes[before]
+                .pixels
+                .iter()
+                .filter(|&i| i < pixels_len)
+            {
                 pixels[i] = self.color;
             }
             if self.fill_color[3] > 0 {
@@ -241,6 +247,16 @@ impl Layer {
     pub fn add_pixels(&mut self, time: f32, pixels: SetUsize) {
         let i = self.closest_frame(time);
         self.keyframes[i].pixels.extend(pixels);
+    }
+    pub fn move_pixels(&mut self, time: f32, displacement: Vec2) {
+        let i = self.closest_frame(time);
+        let didx = displacement.x.round() as isize
+            + displacement.y.round() as isize * self.image.width() as isize;
+        self.keyframes[i].pixels = self.keyframes[i]
+            .pixels
+            .iter()
+            .map(|idx| idx.wrapping_add(didx as usize))
+            .collect();
     }
 
     pub fn frame_selector(&mut self, now: &mut f32) -> bool {

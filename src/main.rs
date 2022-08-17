@@ -72,6 +72,9 @@ impl Drawing {
             self.layers[self.current].add_pixels(self.time, pixels);
         }
     }
+    fn move_pixels(&mut self, displacement: Vec2) {
+        self.layers[self.current].move_pixels(self.time, displacement);
+    }
     fn frame_selector(&mut self) -> bool {
         self.layers[self.current].frame_selector(&mut self.time)
     }
@@ -428,6 +431,9 @@ async fn main() {
                 };
                 let mut drawn = SetUsize::new();
                 if let Some(old) = old_pos {
+                    if drawing.tool == Tool::Move {
+                        drawing.move_pixels(pos - old);
+                    }
                     let parallel = (old - pos).normalize();
                     let orthog = Vec2::new(parallel.y, -parallel.x);
                     let offset = pos.dot(orthog);
