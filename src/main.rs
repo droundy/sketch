@@ -270,7 +270,11 @@ impl Drawing {
                 } else if y == 2 {
                     self.tool = Tool::Eraser;
                 } else if y == bottom_layer_index - self.layers.len() {
-                    self.layers.push(Layer::new(self.time));
+                    if self.layers[self.layers.len() - 1].is_empty() {
+                        self.layers[self.layers.len() - 1].color = Layer::new(self.time);
+                    } else {
+                        self.layers.push(Layer::new(self.time));
+                    }
                     self.current = self.layers.len() - 1;
                     if self.tool == Tool::Eraser {
                         self.tool = Tool::BigPen;

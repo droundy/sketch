@@ -58,6 +58,9 @@ impl Layer {
             tweens: HashMap::new(),
         }
     }
+    pub fn is_empty(&self) -> bool {
+        self.keyframes.iter().all(|k| k.pixels.is_empty())
+    }
     pub fn get_color(&self) -> Color {
         Color::from_rgba(self.color[0], self.color[1], self.color[2], self.color[3])
     }
