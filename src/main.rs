@@ -146,8 +146,8 @@ impl Drawing {
         false
     }
     fn layer_selector(&mut self) -> bool {
-        const WIDTH: f32 = 50.0;
-        const HEIGHT: f32 = 50.0;
+        const WIDTH: f32 = 80.0;
+        const HEIGHT: f32 = 80.0;
         let bottom_layer_index = (screen_height() / HEIGHT) as usize - 1;
         let bottom_layer_y = bottom_layer_index as f32 * HEIGHT;
         fn outline(y: f32, selected: bool) {
@@ -188,24 +188,27 @@ impl Drawing {
             }
         }
         let y = bottom_layer_y - self.layers.len() as f32 * HEIGHT;
-        draw_rectangle(0.0, y, WIDTH, HEIGHT, BLACK);
-        outline(y, false);
-        draw_line(
-            WIDTH * 0.5,
-            y + HEIGHT * 0.5 - 10.0,
-            WIDTH * 0.5,
-            y + HEIGHT * 0.5 + 10.0,
-            5.0,
-            WHITE,
-        );
-        draw_line(
-            WIDTH * 0.5 - 10.0,
-            y + HEIGHT * 0.5,
-            WIDTH * 0.5 + 10.0,
-            y + HEIGHT * 0.5,
-            5.0,
-            WHITE,
-        );
+        // Draw new layer button
+        if y > 3.0 * HEIGHT {
+            draw_rectangle(0.0, y, WIDTH, HEIGHT, BLACK);
+            outline(y, false);
+            draw_line(
+                WIDTH * 0.5,
+                y + HEIGHT * 0.5 - 10.0,
+                WIDTH * 0.5,
+                y + HEIGHT * 0.5 + 10.0,
+                5.0,
+                WHITE,
+            );
+            draw_line(
+                WIDTH * 0.5 - 10.0,
+                y + HEIGHT * 0.5,
+                WIDTH * 0.5 + 10.0,
+                y + HEIGHT * 0.5,
+                5.0,
+                WHITE,
+            );
+        }
         // Now draw the tool buttons.
         let y = 0.0;
         outline(y, self.tool == Tool::BigPen);
