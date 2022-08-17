@@ -315,22 +315,24 @@ impl Drawing {
                 } else if y == 3 {
                     self.tool = Tool::Move;
                 } else if y == bottom_layer_index - self.layers.len() {
-                    if self.layers[self.layers.len() - 1].is_empty() {
-                        self.layers.pop();
-                    }
                     self.layers.push(Layer::new(self.time));
                     self.current = self.layers.len() - 1;
                     if self.tool == Tool::Eraser {
                         self.tool = Tool::BigPen;
                     }
                     self.am_selecting_fill = false;
-                } else if y > bottom_layer_index - self.layers.len() {
-                    self.am_dragging_layer = Some(bottom_layer_index - y);
-                    self.current = bottom_layer_index - y;
-                    let (x, y) = mouse_position();
-                    let y = y % HEIGHT;
-                    self.am_selecting_fill =
-                        x > 0.3 * WIDTH && x < 0.7 * WIDTH && y > 0.3 * HEIGHT && y < 0.7 * HEIGHT;
+                } else {
+                    let new_current = bottom_layer_index - y;
+                    if new_current < self.layers.len() {
+                        self.am_dragging_layer = Some(new_current);
+                        self.current = bottom_layer_index - y;
+                        let (x, y) = mouse_position();
+                        let y = y % HEIGHT;
+                        self.am_selecting_fill = x > 0.3 * WIDTH
+                            && x < 0.7 * WIDTH
+                            && y > 0.3 * HEIGHT
+                            && y < 0.7 * HEIGHT;
+                    }
                 }
                 return true;
             }
