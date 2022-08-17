@@ -238,16 +238,24 @@ impl Chunk {
         // c == (a/b)
         //
         // c = ((y2-x2) +/- sqrt((x2-y2)**2 + 4*xy**2)) / (2*xy)
-        let ax1 = Vec2::new(
-            (-(y2 - x2) - ((x2 - y2).powi(2) + 4.0 * xy.powi(2)).sqrt()) / (2.0 * xy),
-            1.0,
-        )
-        .normalize();
-        let ax2 = Vec2::new(
-            -((y2 - x2) - ((x2 - y2).powi(2) + 4.0 * xy.powi(2)).sqrt()) / (2.0 * xy),
-            1.0,
-        )
-        .normalize();
+        let ax1 = if xy == 0.0 {
+            Vec2::new(1.0, 0.0)
+        } else {
+            Vec2::new(
+                (-(y2 - x2) - ((x2 - y2).powi(2) + 4.0 * xy.powi(2)).sqrt()) / (2.0 * xy),
+                1.0,
+            )
+            .normalize()
+        };
+        let ax2 = if xy == 0.0 {
+            Vec2::new(0.0, 1.0)
+        } else {
+            Vec2::new(
+                -((y2 - x2) - ((x2 - y2).powi(2) + 4.0 * xy.powi(2)).sqrt()) / (2.0 * xy),
+                1.0,
+            )
+            .normalize()
+        };
         // e = x2 + xy*(b/a) = y2 + xy*(a/b)
         let e1 = if ax1.x.abs() > ax1.y.abs() {
             y2 + xy * ax1.x / ax1.y
@@ -291,21 +299,19 @@ fn contiguous_pixels(w: usize, pixels: &mut SetUsize) -> Option<SetUsize> {
     let mut todo = vec![p];
     while let Some(p) = todo.pop() {
         out.insert(p);
-        let x = p % w;
-        let y = p / w;
-        if x > 0 && pixels.contains(p - 1) {
+        if p > 0 && pixels.contains(p - 1) {
             todo.push(p - 1);
             pixels.remove(p - 1);
         }
-        if x < w - 1 && p + 1 < pixels.len() && pixels.contains(p + 1) {
+        if pixels.contains(p + 1) {
             todo.push(p + 1);
             pixels.remove(p + 1);
         }
-        if y > 0 && pixels.contains(p - w) {
+        if p >= w && pixels.contains(p - w) {
             todo.push(p - w);
             pixels.remove(p - w);
         }
-        if y < w - 1 && p + w < pixels.len() && pixels.contains(p + w) {
+        if pixels.contains(p + w) {
             todo.push(p + w);
             pixels.remove(p + w);
         }
@@ -356,7 +362,7 @@ impl Transform {
         } else {
             -n.axis.angle_between(-o.axis)
         };
-        println!("full_angle is {full_angle}");
+        // println!("full_angle is {full_angle}");
         let (sin, cos) = full_angle.sin_cos();
         let major_axis = o.axis;
         let scale_major = if o.major > 0.0 && n.major > 0.0 {
@@ -372,10 +378,10 @@ impl Transform {
         if o.major / o.minor < 1.1 || n.major / n.minor < 1.1 {
             full_angle = 0.0;
         }
-        println!("scales are: {scale_major} and {scale_minor}");
-        println!("old major {} and minor {}", o.major, o.minor);
-        println!("new major {} and minor {}", n.major, n.minor);
-        println!("the major axis is {} {}", major_axis.x, major_axis.y);
+        // println!("scales are: {scale_major} and {scale_minor}");
+        // println!("old major {} and minor {}", o.major, o.minor);
+        // println!("new major {} and minor {}", n.major, n.minor);
+        // println!("the major axis is {} {}", major_axis.x, major_axis.y);
         let center = o.center;
         let translation = n.center - o.center;
         Transform {
