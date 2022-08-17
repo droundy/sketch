@@ -211,11 +211,11 @@ impl Drawing {
         draw_circle(WIDTH * 0.5, y + HEIGHT * 1.5, 2.0, WHITE);
         outline(y + 2.0 * HEIGHT, self.tool == Tool::Eraser);
         draw_circle_lines(WIDTH * 0.5, y + HEIGHT * 2.5, 10.0, 2.0, WHITE);
+        let (x, y) = mouse_position();
         if let Some(original_layer) = self.am_dragging_layer {
             if is_mouse_button_released(MouseButton::Left) {
                 self.am_dragging_layer = None;
             } else {
-                let (_, y) = mouse_position();
                 let idx = (y / HEIGHT) as usize;
                 let idx = if idx > bottom_layer_index {
                     0
@@ -260,7 +260,6 @@ impl Drawing {
             }
             return true;
         } else if is_mouse_button_pressed(MouseButton::Left) {
-            let (x, y) = mouse_position();
             let y = (y / HEIGHT) as usize;
             if x < WIDTH {
                 if y == 0 {
@@ -271,10 +270,9 @@ impl Drawing {
                     self.tool = Tool::Eraser;
                 } else if y == bottom_layer_index - self.layers.len() {
                     if self.layers[self.layers.len() - 1].is_empty() {
-                        self.layers[self.layers.len() - 1].color = Layer::new(self.time);
-                    } else {
-                        self.layers.push(Layer::new(self.time));
+                        self.layers.pop();
                     }
+                    self.layers.push(Layer::new(self.time));
                     self.current = self.layers.len() - 1;
                     if self.tool == Tool::Eraser {
                         self.tool = Tool::BigPen;
@@ -291,7 +289,7 @@ impl Drawing {
                 return true;
             }
         }
-        false
+        x < WIDTH
     }
 }
 
