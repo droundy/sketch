@@ -7,7 +7,7 @@ use macroquad::prelude::{
     mouse_position, next_frame, screen_height, screen_width, Color, Conf, KeyCode, MouseButton,
     Vec2, BLACK, GRAY, WHITE,
 };
-use macroquad::shapes::draw_poly;
+use macroquad::shapes::{draw_poly, draw_triangle};
 use macroquad::texture::{Image, Texture2D};
 use macroquad::ui::root_ui;
 
@@ -144,7 +144,7 @@ impl Drawing {
     }
     fn layer_selector(&mut self) -> bool {
         const WIDTH: f32 = 50.0;
-        const HEIGHT: f32 = 40.0;
+        const HEIGHT: f32 = 50.0;
         let bottom_layer_index = (screen_height() / HEIGHT) as usize - 1;
         let bottom_layer_y = bottom_layer_index as f32 * HEIGHT;
         fn outline(y: f32, selected: bool) {
@@ -211,6 +211,47 @@ impl Drawing {
         draw_circle(WIDTH * 0.5, y + HEIGHT * 1.5, 2.0, WHITE);
         outline(y + 2.0 * HEIGHT, self.tool == Tool::Eraser);
         draw_circle_lines(WIDTH * 0.5, y + HEIGHT * 2.5, 10.0, 2.0, WHITE);
+        outline(y + 3.0 * HEIGHT, self.tool == Tool::Move);
+        draw_line(
+            WIDTH * 0.5,
+            y + 3.2 * HEIGHT,
+            WIDTH * 0.5,
+            y + 3.8 * HEIGHT,
+            2.0,
+            WHITE,
+        );
+        draw_line(
+            WIDTH * 0.2,
+            y + 3.5 * HEIGHT,
+            WIDTH * 0.8,
+            y + 3.5 * HEIGHT,
+            2.0,
+            WHITE,
+        );
+        draw_triangle(
+            Vec2::new(WIDTH * 0.2, y + 3.5 * HEIGHT),
+            Vec2::new(WIDTH * 0.3, y + 3.4 * HEIGHT),
+            Vec2::new(WIDTH * 0.3, y + 3.6 * HEIGHT),
+            WHITE,
+        );
+        draw_triangle(
+            Vec2::new(WIDTH * 0.8, y + 3.5 * HEIGHT),
+            Vec2::new(WIDTH * 0.7, y + 3.4 * HEIGHT),
+            Vec2::new(WIDTH * 0.7, y + 3.6 * HEIGHT),
+            WHITE,
+        );
+        draw_triangle(
+            Vec2::new(WIDTH * 0.5, y + 3.2 * HEIGHT),
+            Vec2::new(WIDTH * 0.6, y + 3.3 * HEIGHT),
+            Vec2::new(WIDTH * 0.4, y + 3.3 * HEIGHT),
+            WHITE,
+        );
+        draw_triangle(
+            Vec2::new(WIDTH * 0.5, y + 3.8 * HEIGHT),
+            Vec2::new(WIDTH * 0.6, y + 3.7 * HEIGHT),
+            Vec2::new(WIDTH * 0.4, y + 3.7 * HEIGHT),
+            WHITE,
+        );
         let (x, y) = mouse_position();
         if let Some(original_layer) = self.am_dragging_layer {
             if is_mouse_button_released(MouseButton::Left) {
@@ -268,6 +309,8 @@ impl Drawing {
                     self.tool = Tool::LittlePen;
                 } else if y == 2 {
                     self.tool = Tool::Eraser;
+                } else if y == 3 {
+                    self.tool = Tool::Move;
                 } else if y == bottom_layer_index - self.layers.len() {
                     if self.layers[self.layers.len() - 1].is_empty() {
                         self.layers.pop();
@@ -298,6 +341,7 @@ enum Tool {
     Eraser,
     BigPen,
     LittlePen,
+    Move,
 }
 
 struct Drawing {
@@ -380,6 +424,7 @@ async fn main() {
                     Tool::LittlePen => 2.0,
                     Tool::BigPen => 10.0,
                     Tool::Eraser => 20.0,
+                    Tool::Move => 0.0,
                 };
                 let mut drawn = SetUsize::new();
                 if let Some(old) = old_pos {
