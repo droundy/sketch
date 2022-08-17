@@ -5,7 +5,7 @@ use macroquad::prelude::{
     draw_circle, draw_circle_lines, draw_line, draw_rectangle, draw_rectangle_lines, draw_texture,
     is_key_pressed, is_mouse_button_down, is_mouse_button_pressed, is_mouse_button_released,
     mouse_position, next_frame, screen_height, screen_width, Color, Conf, KeyCode, MouseButton,
-    Vec2, BLACK, GRAY, WHITE,
+    Vec2, BLACK, DARKGRAY, GRAY, WHITE,
 };
 use macroquad::shapes::{draw_poly, draw_triangle};
 use macroquad::texture::{Image, Texture2D};
@@ -170,7 +170,7 @@ impl Drawing {
                 WIDTH * 0.4,
                 HEIGHT * 0.4,
                 if l.fill_color[3] == 0 {
-                    BLACK
+                    DARKGRAY
                 } else {
                     l.get_fill_color()
                 },
@@ -403,7 +403,7 @@ async fn main() {
         }
 
         for b in bitmap.get_image_data_mut().iter_mut() {
-            *b = [0; 4];
+            *b = [20, 20, 20, 255];
         }
         for l in drawing.layers.iter_mut() {
             l.draw(drawing.time, bitmap.get_image_data_mut());
