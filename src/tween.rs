@@ -1,10 +1,12 @@
 use std::ops::Mul;
 
-use macroquad::prelude::Vec2;
+use glam::Vec2;
 use ordered_float::OrderedFloat;
+use serde::{Deserialize, Serialize};
 use tinyset::SetUsize;
 
 /// A connection between two keyframes.
+#[derive(Clone, Serialize, Deserialize)]
 pub struct Tween {
     chunks: Vec<ChunkTween>,
 }
@@ -46,6 +48,7 @@ impl Tween {
     }
 }
 
+#[derive(Clone, Serialize, Deserialize)]
 struct ChunkTween {
     w: usize,
     connections: Vec<(usize, usize)>,
@@ -343,7 +346,7 @@ fn chunks_test() {
     assert_eq!(0.0, chunks[0].minor);
 }
 
-#[derive(Copy, Clone)]
+#[derive(Copy, Clone, Serialize, Deserialize)]
 pub struct Transform {
     full_angle: f32,
     sin: f32,

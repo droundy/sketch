@@ -14,6 +14,7 @@ use macroquad::ui::root_ui;
 mod layer;
 mod tween;
 use layer::Layer;
+use serde::{Deserialize, Serialize};
 use tinyset::SetUsize;
 
 fn conf() -> Conf {
@@ -65,6 +66,14 @@ fn color_selector_color(fx: f32, fy: f32) -> Option<[u8; 4]> {
 }
 
 impl Drawing {
+    fn open(path: &str) -> Option<Self> {
+        let bytes = std::fs::read(path).ok()?;
+        let drawing = serde_json::from_slice(&bytes).ok()?;
+        Some(drawing)
+    }
+    fn save(&self, path: &str) -> Result<(), std::io::Error> {
+        std::fs::write(path, serde_json::to_string(self).unwrap())
+    }
     fn pen_drew(&mut self, pixels: SetUsize) {
         if self.tool == Tool::Eraser {
             self.layers[self.current].erase_pixels(self.time, pixels);
@@ -344,7 +353,7 @@ impl Drawing {
     }
 }
 
-#[derive(PartialEq, Eq, Debug, Copy, Clone)]
+#[derive(PartialEq, Eq, Debug, Copy, Clone, Deserialize, Serialize)]
 enum Tool {
     Eraser,
     BigPen,
@@ -352,6 +361,7 @@ enum Tool {
     Move,
 }
 
+#[derive(Clone, Deserialize, Serialize)]
 struct Drawing {
     am_animating: bool,
     am_dragging_layer: Option<usize>,
@@ -379,7 +389,7 @@ async fn main() {
     let texture = Texture2D::from_image(&bitmap);
 
     let mut old_pos: Option<Vec2> = None;
-    let mut drawing = Drawing {
+    let mut drawing = Drawing::open("drawing.json").unwrap_or(Drawing {
         am_animating: false,
         am_dragging_layer: None,
         am_selecting_fill: false,
@@ -389,13 +399,14 @@ async fn main() {
         width: screen_width() as u16,
         height: screen_height() as u16,
         layers: vec![Layer::new(0.0)],
-    };
+    });
     let width = drawing.width as usize;
     let height = drawing.height as usize;
     let mut started = Instant::now();
     loop {
         // clear_background(WHITE);
         if is_key_pressed(KeyCode::Escape) {
+            drawing.save("drawing.json").ok();
             return;
         }
         if drawing.am_animating {

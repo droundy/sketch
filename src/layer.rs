@@ -3,31 +3,31 @@ use std::{
     sync::atomic::{AtomicBool, AtomicUsize, Ordering},
 };
 
-use macroquad::{
-    prelude::{
-        draw_line, draw_rectangle, draw_rectangle_lines, is_mouse_button_down,
-        is_mouse_button_pressed, is_mouse_button_released, mouse_position, screen_height,
-        screen_width, Color, Image, MouseButton, Texture2D, Vec2, BLACK, GRAY, WHITE,
-    },
-    texture::{draw_texture_ex, DrawTextureParams},
+use macroquad::prelude::{
+    draw_line, draw_rectangle, draw_rectangle_lines, is_mouse_button_down, is_mouse_button_pressed,
+    is_mouse_button_released, mouse_position, screen_height, screen_width, Color, Image,
+    MouseButton, Texture2D, Vec2, BLACK, GRAY, WHITE,
 };
+use serde::{Deserialize, Serialize};
 use tinyset::SetUsize;
 
 use crate::tween::Tween;
 
-#[derive(Clone)]
+#[derive(Clone, Serialize, Deserialize)]
 struct Bitmap {
     time: f32,
     pixels: SetUsize,
     fill_pixels: SetUsize,
-    texture: Texture2D,
 }
 
+#[derive(Clone, Serialize, Deserialize)]
 pub struct Layer {
     pub color: [u8; 4],
     pub fill_color: [u8; 4],
-    image: Image,
-    texture: Texture2D,
+    width: usize,
+    height: usize,
+    // image: Image,
+    // texture: Texture2D,
     keyframes: Vec<Bitmap>,
     tweens: HashMap<(usize, usize), Tween>,
 }
@@ -47,11 +47,13 @@ impl Layer {
         Layer {
             color: random_color(),
             fill_color: [0; 4],
-            image: bitmap.clone(),
-            texture: Texture2D::from_image(&bitmap),
+            width: bitmap.width(),
+            height: bitmap.height(),
+            // image: bitmap.clone(),
+            // texture: Texture2D::from_image(&bitmap),
             keyframes: vec![Bitmap {
                 time,
-                texture: Texture2D::from_image(&bitmap),
+                // texture: Texture2D::from_image(&bitmap),
                 pixels: SetUsize::new(),
                 fill_pixels: SetUsize::new(),
             }],
@@ -74,8 +76,8 @@ impl Layer {
         self.tweens.retain(|k, _| k.0 != which && k.1 != which);
         let k = &mut self.keyframes[which];
         let mut img = Image::gen_image_color(
-            self.image.width,
-            self.image.height,
+            self.width as u16,
+            self.height as u16,
             Color::from_rgba(0, 0, 0, 0),
         );
         {
@@ -88,7 +90,7 @@ impl Layer {
             }
 
             let mut todo = vec![0];
-            let w = self.image.width();
+            let w = self.width;
             outside[0] = true;
             while let Some(i) = todo.pop() {
                 if i > 0 && !outside[i - 1] {
@@ -121,11 +123,11 @@ impl Layer {
                 }
             }
         }
-        k.texture.update(&img);
+        // k.texture.update(&img);
     }
     pub fn draw(&mut self, time: f32, pixels: &mut [[u8; 4]]) {
         let (before, after) = self.closest_frames(time);
-        let mut bitmap = vec![false; self.image.get_image_data().len()];
+        let mut bitmap = vec![false; self.width * self.height];
         if before == after {
             let pixels_len = pixels.len();
             for i in self.keyframes[before]
@@ -145,7 +147,7 @@ impl Layer {
                 self.tweens.insert(
                     (before, after),
                     Tween::new(
-                        self.image.width(),
+                        self.width,
                         self.keyframes[before].pixels.clone(),
                         self.keyframes[after].pixels.clone(),
                     ),
@@ -161,7 +163,7 @@ impl Layer {
             if self.fill_color[3] > 0 {
                 let mut outside = bitmap.clone();
                 let mut todo = vec![0];
-                let w = self.image.width();
+                let w = self.width;
                 outside[0] = true;
                 while let Some(i) = todo.pop() {
                     if i > 0 && !outside[i - 1] {
@@ -247,8 +249,8 @@ impl Layer {
     }
     pub fn move_pixels(&mut self, time: f32, displacement: Vec2) {
         let i = self.closest_frame(time);
-        let didx = displacement.x.round() as isize
-            + displacement.y.round() as isize * self.image.width() as isize;
+        let didx =
+            displacement.x.round() as isize + displacement.y.round() as isize * self.width as isize;
         self.keyframes[i].pixels = self.keyframes[i]
             .pixels
             .iter()
@@ -275,16 +277,16 @@ impl Layer {
         for frame in self.keyframes.iter() {
             let x = TSTART + frame.time * t_width;
             draw_rectangle(x, THEIGHT * 0.5, FRAME_WIDTH, THEIGHT, BLACK);
-            draw_texture_ex(
-                frame.texture,
-                x,
-                THEIGHT * 0.5,
-                self.get_color(),
-                DrawTextureParams {
-                    dest_size: Some(Vec2::new(FRAME_WIDTH, THEIGHT)),
-                    ..Default::default()
-                },
-            );
+            // draw_texture_ex(
+            //     frame.texture,
+            //     x,
+            //     THEIGHT * 0.5,
+            //     self.get_color(),
+            //     DrawTextureParams {
+            //         dest_size: Some(Vec2::new(FRAME_WIDTH, THEIGHT)),
+            //         ..Default::default()
+            //     },
+            // );
             let (thickness, color) = if frame.time == *now {
                 (4.0, WHITE)
             } else {
@@ -334,16 +336,16 @@ impl Layer {
                 let x = clamp(TSTART, tstop, pos.0) - FRAME_WIDTH * 0.5;
                 if mouse_down {
                     draw_rectangle(x, THEIGHT * 0.5, FRAME_WIDTH, THEIGHT, BLACK);
-                    draw_texture_ex(
-                        self.keyframes[drag_frame].texture,
-                        x,
-                        THEIGHT * 0.5,
-                        self.get_color(),
-                        DrawTextureParams {
-                            dest_size: Some(Vec2::new(FRAME_WIDTH, THEIGHT)),
-                            ..Default::default()
-                        },
-                    );
+                    // draw_texture_ex(
+                    //     self.keyframes[drag_frame].texture,
+                    //     x,
+                    //     THEIGHT * 0.5,
+                    //     self.get_color(),
+                    //     DrawTextureParams {
+                    //         dest_size: Some(Vec2::new(FRAME_WIDTH, THEIGHT)),
+                    //         ..Default::default()
+                    //     },
+                    // );
                     draw_rectangle_lines(x, THEIGHT * 0.5, FRAME_WIDTH, THEIGHT, 2.0, GRAY);
                 } else {
                     self.keyframes[KEYFRAME.load(Ordering::Relaxed)].time = time;
@@ -369,9 +371,9 @@ impl Layer {
                 draw_line(pos.0 - 10.0, THEIGHT, pos.0 + 10.0, THEIGHT, 4.0, GRAY);
                 draw_line(pos.0, THEIGHT - 10.0, pos.0, THEIGHT + 10.0, 4.0, GRAY);
                 if mouse_released {
-                    let mut img = self.image.clone();
-                    self.draw(time, img.get_image_data_mut());
-                    self.texture.update(&img);
+                    // let mut img = self.image.clone();
+                    // self.draw(time, img.get_image_data_mut());
+                    // self.texture.update(&img);
 
                     let mut pixels = SetUsize::new();
                     let mut fill_pixels = SetUsize::new();
@@ -383,7 +385,7 @@ impl Layer {
                     }
                     self.keyframes.push(Bitmap {
                         time,
-                        texture: Texture2D::from_image(&self.image),
+                        // texture: Texture2D::from_image(&self.image),
                         pixels,
                         fill_pixels,
                     });
