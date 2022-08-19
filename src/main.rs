@@ -1,5 +1,8 @@
 use std::time::Instant;
-use std::{f32::consts::PI, sync::atomic::AtomicBool};
+use std::{
+    f32::consts::PI,
+    sync::atomic::{AtomicBool, AtomicUsize, Ordering},
+};
 
 use macroquad::prelude::{
     draw_circle, draw_circle_lines, draw_line, draw_rectangle, draw_rectangle_lines, draw_texture,
@@ -8,14 +11,16 @@ use macroquad::prelude::{
     Vec2, BLACK, DARKGRAY, GRAY, WHITE,
 };
 use macroquad::shapes::{draw_poly, draw_triangle};
-use macroquad::texture::{Image, Texture2D};
+use macroquad::texture::{draw_texture_ex, DrawTextureParams, Image, Texture2D};
 use macroquad::ui::root_ui;
 
 mod layer;
 mod tween;
-use layer::Layer;
+use layer::{clamp, Layer};
 use serde::{Deserialize, Serialize};
 use tinyset::SetUsize;
+
+const BACKGROUND_COLOR: [u8; 4] = [20, 20, 20, 255];
 
 fn conf() -> Conf {
     Conf {
@@ -75,6 +80,9 @@ impl Drawing {
         std::fs::write(path, serde_json::to_string(self).unwrap())
     }
     fn pen_drew(&mut self, pixels: SetUsize) {
+        if self.keyframes.iter().any(|k| k.time == self.time) {
+            self.layers[self.current].ensure_we_have_frame_at(self.time);
+        }
         if self.tool == Tool::Eraser {
             self.layers[self.current].erase_pixels(self.time, pixels);
         } else {
@@ -84,11 +92,178 @@ impl Drawing {
     fn move_pixels(&mut self, displacement: Vec2) {
         self.layers[self.current].move_pixels(self.time, displacement);
     }
-    fn frame_selector(&mut self) -> bool {
-        self.layers[self.current].frame_selector(&mut self.time)
+    pub fn frame_selector(&mut self, textures: &mut Vec<Texture2D>) -> bool {
+        const TSTART: f32 = 100.0;
+        const THEIGHT: f32 = 50.0;
+        const FRAME_WIDTH: f32 = 70.0;
+        let tstop: f32 = screen_width() - 2.0 * FRAME_WIDTH;
+        let t_width = tstop - TSTART;
+        draw_line(TSTART, THEIGHT, tstop, THEIGHT, 4.0, GRAY);
+        draw_line(
+            TSTART + self.time * (tstop - TSTART),
+            THEIGHT * 0.5,
+            TSTART + self.time * (tstop - TSTART),
+            THEIGHT * 1.5,
+            10.0,
+            WHITE,
+        );
+
+        for (whichframe, frame) in self.keyframes.iter().enumerate() {
+            let x = TSTART + frame.time * t_width;
+            draw_rectangle(x, THEIGHT * 0.5, FRAME_WIDTH, THEIGHT, BLACK);
+            if whichframe >= textures.len() {
+                let mut img = Image::gen_image_color(self.width as u16, self.height as u16, BLACK);
+                for (i, o) in frame.bitmap.iter().zip(img.get_image_data_mut().iter_mut()) {
+                    *o = *i;
+                }
+                textures.push(Texture2D::from_image(&img))
+            }
+            draw_texture_ex(
+                textures[whichframe],
+                x,
+                THEIGHT * 0.5,
+                WHITE,
+                DrawTextureParams {
+                    dest_size: Some(Vec2::new(FRAME_WIDTH, THEIGHT)),
+                    ..Default::default()
+                },
+            );
+            let (thickness, color) = if frame.time == self.time {
+                (4.0, WHITE)
+            } else {
+                (2.0, GRAY)
+            };
+            draw_rectangle_lines(x, THEIGHT * 0.5, FRAME_WIDTH, THEIGHT, thickness, color);
+        }
+        let pos = mouse_position();
+        static AM_DRAGGING: AtomicBool = AtomicBool::new(false);
+        static KEYFRAME: AtomicUsize = AtomicUsize::new(0);
+        let am_dragging = AM_DRAGGING.load(Ordering::Relaxed);
+        let drag_frame = KEYFRAME.load(Ordering::Relaxed);
+        if am_dragging
+            || (pos.1 <= 1.5 * THEIGHT && pos.0 >= TSTART + FRAME_WIDTH * 0.5 && pos.0 < tstop)
+        {
+            let time = clamp(
+                0.0,
+                1.0,
+                (pos.0 - FRAME_WIDTH * 0.5 - TSTART) / (tstop - TSTART),
+            );
+            let mouse_released = is_mouse_button_released(MouseButton::Left);
+            let mouse_pressed = is_mouse_button_pressed(MouseButton::Left);
+            let mouse_down = is_mouse_button_down(MouseButton::Left);
+            if let Some((i, frame)) = self
+                .keyframes
+                .iter()
+                .enumerate()
+                .filter(|(_, f)| {
+                    let x = TSTART + f.time * (tstop - TSTART);
+                    (pos.0 >= x - FRAME_WIDTH * 0.5) && (pos.0 <= x + FRAME_WIDTH * 1.5)
+                })
+                .next()
+            {
+                let x = TSTART + frame.time * t_width;
+                draw_rectangle_lines(x, THEIGHT * 0.5, FRAME_WIDTH, THEIGHT, 4.0, WHITE);
+                if am_dragging && drag_frame == i {
+                    draw_rectangle_lines(x, THEIGHT * 0.5, FRAME_WIDTH, THEIGHT, 6.0, WHITE);
+                    if mouse_released {
+                        self.time = frame.time;
+                        AM_DRAGGING.store(false, Ordering::Relaxed);
+                    }
+                } else if mouse_pressed {
+                    AM_DRAGGING.store(true, Ordering::Relaxed);
+                    KEYFRAME.store(i, Ordering::Relaxed);
+                }
+            } else if am_dragging && self.keyframes.len() > drag_frame {
+                let x = clamp(TSTART, tstop, pos.0) - FRAME_WIDTH * 0.5;
+                if mouse_down {
+                    draw_rectangle(x, THEIGHT * 0.5, FRAME_WIDTH, THEIGHT, BLACK);
+                    draw_texture_ex(
+                        textures[drag_frame],
+                        x,
+                        THEIGHT * 0.5,
+                        WHITE,
+                        DrawTextureParams {
+                            dest_size: Some(Vec2::new(FRAME_WIDTH, THEIGHT)),
+                            ..Default::default()
+                        },
+                    );
+                    draw_rectangle_lines(x, THEIGHT * 0.5, FRAME_WIDTH, THEIGHT, 2.0, GRAY);
+                } else {
+                    let which_frame = KEYFRAME.load(Ordering::Relaxed);
+                    let old_time = self.keyframes[which_frame].time;
+                    for l in self.layers.iter_mut() {
+                        l.shift_frame(old_time, time);
+                    }
+                    self.keyframes[which_frame].time = time;
+                    self.time = time;
+                    AM_DRAGGING.store(false, Ordering::Relaxed);
+                }
+            } else {
+                draw_rectangle(
+                    pos.0 - FRAME_WIDTH * 0.5,
+                    THEIGHT * 0.5,
+                    FRAME_WIDTH,
+                    THEIGHT,
+                    BLACK,
+                );
+                draw_rectangle_lines(
+                    pos.0 - FRAME_WIDTH * 0.5,
+                    THEIGHT * 0.5,
+                    FRAME_WIDTH,
+                    THEIGHT,
+                    2.0,
+                    GRAY,
+                );
+                draw_line(pos.0 - 10.0, THEIGHT, pos.0 + 10.0, THEIGHT, 4.0, GRAY);
+                draw_line(pos.0, THEIGHT - 10.0, pos.0, THEIGHT + 10.0, 4.0, GRAY);
+                if mouse_released {
+                    self.keyframes.push(Keyframe {
+                        time,
+                        bitmap: vec![[0; 4]; self.width as usize * self.height as usize],
+                    });
+                    self.time = time;
+                    self.handle_modified_bitmap(textures);
+                }
+            }
+        }
+        pos.1 < 2.0 * THEIGHT || am_dragging
     }
-    fn handle_modified_bitmap(&mut self) {
+
+    fn handle_modified_bitmap(&mut self, textures: &mut Vec<Texture2D>) {
         self.layers[self.current].handle_modified_bitmap(self.time);
+        for (i, f) in self.keyframes.iter_mut().enumerate() {
+            if f.time == self.time {
+                for p in f.bitmap.iter_mut() {
+                    *p = BACKGROUND_COLOR;
+                }
+                for l in self.layers.iter_mut() {
+                    l.draw(f.time, &mut f.bitmap);
+                }
+                let mut img = Image::gen_image_color(self.width, self.height, BLACK);
+                for (i, o) in f.bitmap.iter().zip(img.get_image_data_mut().iter_mut()) {
+                    *o = *i;
+                }
+                while textures.len() <= i {
+                    textures.push(Texture2D::from_image(&img));
+                }
+                textures[i].update(&img);
+            }
+        }
+    }
+    fn handle_modified_colors(&mut self, textures: &mut Vec<Texture2D>) {
+        for (i, f) in self.keyframes.iter_mut().enumerate() {
+            for l in self.layers.iter_mut() {
+                l.draw(f.time, &mut f.bitmap);
+            }
+            let mut img = Image::gen_image_color(self.width, self.height, BLACK);
+            for (i, o) in f.bitmap.iter().zip(img.get_image_data_mut().iter_mut()) {
+                *o = *i;
+            }
+            while textures.len() <= i {
+                textures.push(Texture2D::from_image(&img));
+            }
+            textures[i].update(&img);
+        }
     }
     fn animation_button(&mut self) -> bool {
         const RADIUS: f32 = 16.0;
@@ -372,6 +547,13 @@ struct Drawing {
     time: f32,
     tool: Tool,
     layers: Vec<Layer>,
+    keyframes: Vec<Keyframe>,
+}
+
+#[derive(Clone, Deserialize, Serialize)]
+struct Keyframe {
+    time: f32,
+    bitmap: Vec<[u8; 4]>,
 }
 
 #[macroquad::main(conf)]
@@ -399,10 +581,15 @@ async fn main() {
         width: screen_width() as u16,
         height: screen_height() as u16,
         layers: vec![Layer::new(0.0)],
+        keyframes: vec![Keyframe {
+            time: 0.0,
+            bitmap: vec![BACKGROUND_COLOR; screen_width() as usize * screen_height() as usize],
+        }],
     });
     let width = drawing.width as usize;
     let height = drawing.height as usize;
     let mut started = Instant::now();
+    let mut frame_textures = Vec::new();
     loop {
         // clear_background(WHITE);
         if is_key_pressed(KeyCode::Escape) {
@@ -427,7 +614,10 @@ async fn main() {
             started = Instant::now();
         }
         let color_selected = drawing.color_selector();
-        let frame_selected = drawing.frame_selector();
+        if color_selected {
+            drawing.handle_modified_colors(&mut frame_textures);
+        }
+        let frame_selected = drawing.frame_selector(&mut frame_textures);
         let layer_selected = drawing.layer_selector();
         if !root_ui().is_mouse_captured()
             && !color_selected
@@ -507,7 +697,7 @@ async fn main() {
                     }
                 }
                 drawing.pen_drew(drawn);
-                drawing.handle_modified_bitmap();
+                drawing.handle_modified_bitmap(&mut frame_textures);
             } else {
                 old_pos = None;
             }
