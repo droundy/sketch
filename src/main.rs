@@ -7,7 +7,7 @@ use std::{
 use macroquad::prelude::{
     draw_circle, draw_circle_lines, draw_line, draw_rectangle, draw_rectangle_lines, draw_texture,
     is_key_pressed, is_mouse_button_down, is_mouse_button_pressed, is_mouse_button_released,
-    mouse_position, next_frame, screen_height, screen_width, Color, Conf, KeyC&ode, MouseButton,
+    mouse_position, next_frame, screen_height, screen_width, Color, Conf, KeyCode, MouseButton,
     Vec2, BLACK, DARKGRAY, GRAY, WHITE,
 };
 use macroquad::shapes::{draw_poly, draw_triangle};
