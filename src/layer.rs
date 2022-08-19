@@ -252,9 +252,10 @@ impl Layer {
     }
 
     pub fn shift_frame(&mut self, old_time: f32, new_time: f32) {
-        for k in self.keyframes.iter_mut() {
+        for (which, k) in self.keyframes.iter_mut().enumerate() {
             if k.time == old_time {
                 k.time = new_time;
+                self.tweens.retain(|k, _| k.0 != which && k.1 != which);
             }
         }
     }
