@@ -232,26 +232,9 @@ impl Drawing {
     fn handle_modified_bitmap(&mut self, textures: &mut Vec<Texture2D>) {
         self.layers[self.current].handle_modified_bitmap(self.time);
         for (i, f) in self.keyframes.iter_mut().enumerate() {
-            if f.time == self.time {
-                for p in f.bitmap.iter_mut() {
-                    *p = BACKGROUND_COLOR;
-                }
-                for l in self.layers.iter_mut() {
-                    l.draw(f.time, &mut f.bitmap);
-                }
-                let mut img = Image::gen_image_color(self.width, self.height, BLACK);
-                for (i, o) in f.bitmap.iter().zip(img.get_image_data_mut().iter_mut()) {
-                    *o = *i;
-                }
-                while textures.len() <= i {
-                    textures.push(Texture2D::from_image(&img));
-                }
-                textures[i].update(&img);
+            for p in f.bitmap.iter_mut() {
+                *p = BACKGROUND_COLOR;
             }
-        }
-    }
-    fn handle_modified_colors(&mut self, textures: &mut Vec<Texture2D>) {
-        for (i, f) in self.keyframes.iter_mut().enumerate() {
             for l in self.layers.iter_mut() {
                 l.draw(f.time, &mut f.bitmap);
             }
@@ -615,7 +598,7 @@ async fn main() {
         }
         let color_selected = drawing.color_selector();
         if color_selected {
-            drawing.handle_modified_colors(&mut frame_textures);
+            drawing.handle_modified_bitmap(&mut frame_textures);
         }
         let frame_selected = drawing.frame_selector(&mut frame_textures);
         let layer_selected = drawing.layer_selector();
