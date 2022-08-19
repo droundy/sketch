@@ -7,7 +7,7 @@ use std::{
 use macroquad::prelude::{
     draw_circle, draw_circle_lines, draw_line, draw_rectangle, draw_rectangle_lines, draw_texture,
     is_key_pressed, is_mouse_button_down, is_mouse_button_pressed, is_mouse_button_released,
-    mouse_position, next_frame, screen_height, screen_width, Color, Conf, KeyCode, MouseButton,
+    mouse_position, next_frame, screen_height, screen_width, Color, Conf, KeyC&ode, MouseButton,
     Vec2, BLACK, DARKGRAY, GRAY, WHITE,
 };
 use macroquad::shapes::{draw_poly, draw_triangle};
@@ -541,6 +541,8 @@ struct Keyframe {
 
 #[macroquad::main(conf)]
 async fn main() {
+    let args: Vec<String> = std::env::args().collect();
+    let filename = args.get(1).cloned().unwrap_or_else(|| "drawing.json".to_owned());
     let mut bitmap = Image::gen_image_color(
         screen_width() as u16,
         screen_height() as u16,
@@ -554,7 +556,7 @@ async fn main() {
     let texture = Texture2D::from_image(&bitmap);
 
     let mut old_pos: Option<Vec2> = None;
-    let mut drawing = Drawing::open("drawing.json").unwrap_or(Drawing {
+    let mut drawing = Drawing::open(&filename).unwrap_or(Drawing {
         am_animating: false,
         am_dragging_layer: None,
         am_selecting_fill: false,
@@ -576,7 +578,7 @@ async fn main() {
     loop {
         // clear_background(WHITE);
         if is_key_pressed(KeyCode::Escape) {
-            drawing.save("drawing.json").ok();
+            drawing.save(&filename).ok();
             return;
         }
         if drawing.am_animating {
