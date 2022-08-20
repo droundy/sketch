@@ -69,16 +69,28 @@ fn color_selector_color(fx: f32, fy: f32) -> Option<[u8; 4]> {
 }
 
 impl Drawing {
-    fn open(path: &str) -> Option<Self> {
+    fn open(path: &str, images: &mut Vec<Image>, textures: &mut Vec<Texture2D>) -> Option<Self> {
         let bytes = std::fs::read(path).ok()?;
-        let mut drawing: Drawing = serde_json::from_slice(&bytes).ok()?;
-        for l in drawing.layers.iter_mut() {
-            l.handle_modified_bitmap(drawing.time);
+        let mut drawing: Drawing = if path.ends_with(".json") {
+            serde_json::from_slice(&bytes).ok()?
+        } else {
+            bincode::deserialize(&bytes).ok()?
+        };
+        for f in drawing.keyframes.iter() {
+            for l in drawing.layers.iter_mut() {
+                l.handle_modified_bitmap(f.time);
+            }
         }
+        drawing.handle_modified_bitmap(images, textures);
         Some(drawing)
     }
     fn save(&self, path: &str) -> Result<(), std::io::Error> {
-        std::fs::write(path, serde_json::to_string(self).unwrap())
+        std::fs::write("drawing.json", serde_json::to_string(self).unwrap())?;
+        if path.ends_with(".json") {
+            std::fs::write(path, serde_json::to_string(self).unwrap())
+        } else {
+            std::fs::write(path, bincode::serialize(self).unwrap())
+        }
     }
     fn pen_drew(&mut self, pixels: SetUsize) {
         if self.keyframes.iter().any(|k| k.time == self.time) {
@@ -551,7 +563,7 @@ async fn main() {
     let filename = args
         .get(1)
         .cloned()
-        .unwrap_or_else(|| "drawing.json".to_owned());
+        .unwrap_or_else(|| "drawing.sketch".to_owned());
     let mut bitmap = Image::gen_image_color(
         screen_width() as u16,
         screen_height() as u16,
@@ -565,23 +577,24 @@ async fn main() {
     let texture = Texture2D::from_image(&bitmap);
 
     let mut old_pos: Option<Vec2> = None;
-    let mut drawing = Drawing::open(&filename).unwrap_or(Drawing {
-        am_animating: false,
-        am_dragging_layer: None,
-        am_selecting_fill: false,
-        time: 0.0,
-        current: 0,
-        tool: Tool::BigPen,
-        width: screen_width() as u16,
-        height: screen_height() as u16,
-        layers: vec![Layer::new(0.0)],
-        keyframes: vec![Keyframe { time: 0.0 }],
-    });
+    let mut frame_images = Vec::new();
+    let mut frame_textures = Vec::new();
+    let mut drawing =
+        Drawing::open(&filename, &mut frame_images, &mut frame_textures).unwrap_or(Drawing {
+            am_animating: false,
+            am_dragging_layer: None,
+            am_selecting_fill: false,
+            time: 0.0,
+            current: 0,
+            tool: Tool::BigPen,
+            width: screen_width() as u16,
+            height: screen_height() as u16,
+            layers: vec![Layer::new(0.0)],
+            keyframes: vec![Keyframe { time: 0.0 }],
+        });
     let width = drawing.width as usize;
     let height = drawing.height as usize;
     let mut started = Instant::now();
-    let mut frame_images = Vec::new();
-    let mut frame_textures = Vec::new();
     loop {
         // clear_background(WHITE);
         if is_key_pressed(KeyCode::Escape) {
