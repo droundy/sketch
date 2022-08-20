@@ -689,8 +689,8 @@ async fn main() {
                     }
                 }
                 drawing.pen_drew(drawn);
+            } else if old_pos.is_some() {
                 drawing.handle_modified_bitmap(&mut frame_images, &mut frame_textures);
-            } else {
                 old_pos = None;
             }
         } else {

@@ -66,21 +66,13 @@ impl Layer {
             self.fill_color[3],
         )
     }
-    pub fn handle_modified_bitmap(&mut self, time: f32) {
-        let which = self.closest_frame(time);
+    fn compute_fill(&mut self, which: usize) {
         self.tweens.retain(|k, _| k.0 != which && k.1 != which);
         let k = &mut self.keyframes[which];
-        let mut img = Image::gen_image_color(
-            self.width as u16,
-            self.height as u16,
-            Color::from_rgba(0, 0, 0, 0),
-        );
         {
-            let img = img.get_image_data_mut();
-            let mut outside = vec![false; img.len()];
-            let image_len = img.len();
+            let mut outside = vec![false; self.width * self.height];
+            let image_len = outside.len();
             for i in k.pixels.iter().filter(|&i| i < image_len) {
-                img[i] = self.color;
                 outside[i] = true;
             }
 
@@ -112,13 +104,29 @@ impl Layer {
                     .filter(|(_, b)| !*b)
                     .map(|x| x.0),
             );
+        }
+    }
+    pub fn handle_modified_bitmap(&mut self, time: f32) {
+        let which = self.closest_frame(time);
+        self.compute_fill(which);
+        let k = &mut self.keyframes[which];
+        let mut img = Image::gen_image_color(
+            self.width as u16,
+            self.height as u16,
+            Color::from_rgba(0, 0, 0, 0),
+        );
+        {
+            let img = img.get_image_data_mut();
+            let image_len = img.len();
+            for i in k.pixels.iter().filter(|&i| i < image_len) {
+                img[i] = self.color;
+            }
             if self.fill_color[3] > 0 {
                 for p in k.fill_pixels.iter() {
                     img[p] = self.fill_color;
                 }
             }
         }
-        // k.texture.update(&img);
     }
     pub fn draw(&mut self, time: f32, pixels: &mut [[u8; 4]]) {
         let (before, after) = self.closest_frames(time);
@@ -237,10 +245,12 @@ impl Layer {
         for p in pixels {
             self.keyframes[i].pixels.remove(p);
         }
+        self.compute_fill(i);
     }
     pub fn add_pixels(&mut self, time: f32, pixels: SetUsize) {
         let i = self.closest_frame(time);
         self.keyframes[i].pixels.extend(pixels);
+        self.compute_fill(i);
     }
     pub fn move_pixels(&mut self, time: f32, displacement: Vec2) {
         let i = self.closest_frame(time);
