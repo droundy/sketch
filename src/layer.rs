@@ -10,6 +10,7 @@ use crate::tween::Tween;
 struct Bitmap {
     time: f32,
     pixels: SetUsize,
+    #[serde(skip)]
     fill_pixels: SetUsize,
 }
 
@@ -22,6 +23,7 @@ pub struct Layer {
     // image: Image,
     // texture: Texture2D,
     keyframes: Vec<Bitmap>,
+    #[serde(skip)]
     tweens: HashMap<(usize, usize), Tween>,
 }
 

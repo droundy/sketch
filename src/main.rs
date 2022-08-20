@@ -20,8 +20,6 @@ use layer::{clamp, Layer};
 use serde::{Deserialize, Serialize};
 use tinyset::SetUsize;
 
-const BACKGROUND_COLOR: [u8; 4] = [20, 20, 20, 255];
-
 fn conf() -> Conf {
     Conf {
         window_title: String::from("Fun draw"),
@@ -73,7 +71,10 @@ fn color_selector_color(fx: f32, fy: f32) -> Option<[u8; 4]> {
 impl Drawing {
     fn open(path: &str) -> Option<Self> {
         let bytes = std::fs::read(path).ok()?;
-        let drawing = serde_json::from_slice(&bytes).ok()?;
+        let mut drawing: Drawing = serde_json::from_slice(&bytes).ok()?;
+        for l in drawing.layers.iter_mut() {
+            l.handle_modified_bitmap(drawing.time);
+        }
         Some(drawing)
     }
     fn save(&self, path: &str) -> Result<(), std::io::Error> {
@@ -92,7 +93,11 @@ impl Drawing {
     fn move_pixels(&mut self, displacement: Vec2) {
         self.layers[self.current].move_pixels(self.time, displacement);
     }
-    pub fn frame_selector(&mut self, textures: &mut Vec<Texture2D>) -> bool {
+    pub fn frame_selector(
+        &mut self,
+        images: &mut Vec<Image>,
+        textures: &mut Vec<Texture2D>,
+    ) -> bool {
         const TSTART: f32 = 100.0;
         const THEIGHT: f32 = 50.0;
         const FRAME_WIDTH: f32 = 70.0;
@@ -111,12 +116,15 @@ impl Drawing {
         for (whichframe, frame) in self.keyframes.iter().enumerate() {
             let x = TSTART + frame.time * t_width;
             draw_rectangle(x, THEIGHT * 0.5, FRAME_WIDTH, THEIGHT, BLACK);
+            if whichframe >= images.len() {
+                images.push(Image::gen_image_color(
+                    self.width as u16,
+                    self.height as u16,
+                    BLACK,
+                ))
+            }
             if whichframe >= textures.len() {
-                let mut img = Image::gen_image_color(self.width as u16, self.height as u16, BLACK);
-                for (i, o) in frame.bitmap.iter().zip(img.get_image_data_mut().iter_mut()) {
-                    *o = *i;
-                }
-                textures.push(Texture2D::from_image(&img))
+                textures.push(Texture2D::from_image(&images[whichframe]));
             }
             draw_texture_ex(
                 textures[whichframe],
@@ -217,35 +225,34 @@ impl Drawing {
                 draw_line(pos.0 - 10.0, THEIGHT, pos.0 + 10.0, THEIGHT, 4.0, GRAY);
                 draw_line(pos.0, THEIGHT - 10.0, pos.0, THEIGHT + 10.0, 4.0, GRAY);
                 if mouse_released {
-                    self.keyframes.push(Keyframe {
-                        time,
-                        bitmap: vec![[0; 4]; self.width as usize * self.height as usize],
-                    });
+                    self.keyframes.push(Keyframe { time });
                     self.time = time;
-                    self.handle_modified_bitmap(textures);
+                    self.handle_modified_bitmap(images, textures);
                 }
             }
         }
         pos.1 < 2.0 * THEIGHT || am_dragging
     }
 
-    fn handle_modified_bitmap(&mut self, textures: &mut Vec<Texture2D>) {
+    fn handle_modified_bitmap(&mut self, images: &mut Vec<Image>, textures: &mut Vec<Texture2D>) {
         self.layers[self.current].handle_modified_bitmap(self.time);
         for (i, f) in self.keyframes.iter_mut().enumerate() {
-            for p in f.bitmap.iter_mut() {
-                *p = BACKGROUND_COLOR;
+            while images.len() <= i {
+                images.push(Image::gen_image_color(
+                    self.width,
+                    self.height,
+                    Color::from_rgba(20, 20, 20, 255),
+                ));
             }
+            images[i] =
+                Image::gen_image_color(self.width, self.height, Color::from_rgba(20, 20, 20, 255));
             for l in self.layers.iter_mut() {
-                l.draw(f.time, &mut f.bitmap);
-            }
-            let mut img = Image::gen_image_color(self.width, self.height, BLACK);
-            for (i, o) in f.bitmap.iter().zip(img.get_image_data_mut().iter_mut()) {
-                *o = *i;
+                l.draw(f.time, images[i].get_image_data_mut());
             }
             while textures.len() <= i {
-                textures.push(Texture2D::from_image(&img));
+                textures.push(Texture2D::from_image(&images[i]));
             }
-            textures[i].update(&img);
+            textures[i].update(&images[i]);
         }
     }
     fn animation_button(&mut self) -> bool {
@@ -536,13 +543,15 @@ struct Drawing {
 #[derive(Clone, Deserialize, Serialize)]
 struct Keyframe {
     time: f32,
-    bitmap: Vec<[u8; 4]>,
 }
 
 #[macroquad::main(conf)]
 async fn main() {
     let args: Vec<String> = std::env::args().collect();
-    let filename = args.get(1).cloned().unwrap_or_else(|| "drawing.json".to_owned());
+    let filename = args
+        .get(1)
+        .cloned()
+        .unwrap_or_else(|| "drawing.json".to_owned());
     let mut bitmap = Image::gen_image_color(
         screen_width() as u16,
         screen_height() as u16,
@@ -566,14 +575,12 @@ async fn main() {
         width: screen_width() as u16,
         height: screen_height() as u16,
         layers: vec![Layer::new(0.0)],
-        keyframes: vec![Keyframe {
-            time: 0.0,
-            bitmap: vec![BACKGROUND_COLOR; screen_width() as usize * screen_height() as usize],
-        }],
+        keyframes: vec![Keyframe { time: 0.0 }],
     });
     let width = drawing.width as usize;
     let height = drawing.height as usize;
     let mut started = Instant::now();
+    let mut frame_images = Vec::new();
     let mut frame_textures = Vec::new();
     loop {
         // clear_background(WHITE);
@@ -600,9 +607,9 @@ async fn main() {
         }
         let color_selected = drawing.color_selector();
         if color_selected {
-            drawing.handle_modified_bitmap(&mut frame_textures);
+            drawing.handle_modified_bitmap(&mut frame_images, &mut frame_textures);
         }
-        let frame_selected = drawing.frame_selector(&mut frame_textures);
+        let frame_selected = drawing.frame_selector(&mut frame_images, &mut frame_textures);
         let layer_selected = drawing.layer_selector();
         if !root_ui().is_mouse_captured()
             && !color_selected
@@ -682,7 +689,7 @@ async fn main() {
                     }
                 }
                 drawing.pen_drew(drawn);
-                drawing.handle_modified_bitmap(&mut frame_textures);
+                drawing.handle_modified_bitmap(&mut frame_images, &mut frame_textures);
             } else {
                 old_pos = None;
             }
