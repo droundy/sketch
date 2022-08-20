@@ -281,8 +281,8 @@ impl Chunk {
         } else {
             (e2.sqrt(), e1.sqrt(), ax2)
         };
-        println!("axis 1: {} {}  gives {e1}", ax1.x, ax1.y);
-        println!("axis 2: {} {}  gives {e2}", ax2.x, ax2.y);
+        // println!("axis 1: {} {}  gives {e1}", ax1.x, ax1.y);
+        // println!("axis 2: {} {}  gives {e2}", ax2.x, ax2.y);
         Chunk {
             area,
             points,
