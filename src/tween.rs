@@ -62,96 +62,75 @@ impl ChunkTween {
     fn new(w: usize, before: Chunk, after: Chunk) -> Self {
         let transform = Transform::new(&before, &after);
 
-        let mut before_positions = before
-            .points
-            .iter()
-            .map(|i| (i, Vec2::new((i % w) as f32, (i / w) as f32)))
-            .map(|(i, v)| (i, transform * v))
-            .collect::<Vec<_>>();
-        let mut after_positions = after
-            .points
-            .iter()
-            .map(|i| (i, Vec2::new((i % w) as f32, (i / w) as f32)))
-            .collect::<Vec<_>>();
-        before_positions.sort_unstable_by_key(|(_, v)| OrderedFloat(v.x));
-        after_positions.sort_unstable_by_key(|(_, v)| OrderedFloat(v.x));
-
         let mut connections = Vec::new();
 
-        for (b, v) in before_positions.iter().copied() {
-            let a_guess = match after_positions
-                .binary_search_by_key(&OrderedFloat(v.x), |(_, v)| OrderedFloat(v.x))
-            {
-                Ok(i) => i,
-                Err(i) => {
-                    if i == 0 {
-                        0
-                    } else {
-                        i - 1
-                    }
-                }
-            };
-            let mut best_dist = after_positions[a_guess].1.distance(v);
-            let mut best_a = a_guess;
-            for i in a_guess + 1..after_positions.len() {
-                let d_i = after_positions[i].1.distance(v);
-                if d_i < best_dist {
-                    best_a = i;
-                    best_dist = d_i;
-                }
-                if (after_positions[i].1.x - v.x).abs() > best_dist {
-                    break;
-                }
-            }
-            for i in (0..a_guess).rev() {
-                let d_i = after_positions[i].1.distance(v);
-                if d_i < best_dist {
-                    best_a = i;
-                    best_dist = d_i;
-                }
-                if (after_positions[i].1.x - v.x).abs() > best_dist {
-                    break;
-                }
-            }
-            connections.push((b, after_positions[best_a].0));
-        }
+        let mut before_pixels = before.points.clone();
+        let before_outline = outline(w, &mut before_pixels).unwrap();
+        let mut after_pixels = after.points.clone();
+        let after_outline = outline(w, &mut after_pixels).unwrap();
 
-        for (a, v) in after_positions.iter().copied() {
-            let b_guess = match before_positions
-                .binary_search_by_key(&OrderedFloat(v.x), |(_, v)| OrderedFloat(v.x))
-            {
-                Ok(i) => i,
-                Err(i) => {
-                    if i == 0 {
-                        0
+        let mut i = 0;
+        let mut j = 0;
+        while i < before_outline.len() && j < after_outline.len() {
+            connections.push((before_outline[i], after_outline[j]));
+            let ifrac = (i + 1) as f64 / before_outline.len() as f64;
+            let jfrac = (j + 1) as f64 / after_outline.len() as f64;
+            if ifrac < jfrac {
+                i += 1;
+            } else {
+                j += 1;
+            }
+        }
+        let mut todo = connections.clone();
+
+        while !before_pixels.is_empty() || !after_pixels.is_empty() {
+            let mut more = Vec::new();
+            for (b, a) in todo.drain(..) {
+                if before_pixels.contains(b + 1) {
+                    if after_pixels.contains(a + 1) {
+                        more.push((b + 1, a + 1));
                     } else {
-                        i - 1
+                        more.push((b + 1, a));
                     }
+                } else if after_pixels.contains(a + 1) {
+                    more.push((b, a + 1));
                 }
-            };
-            let mut best_dist = before_positions[b_guess].1.distance(v);
-            let mut best_b = b_guess;
-            for i in b_guess + 1..before_positions.len() {
-                let d_i = before_positions[i].1.distance(v);
-                if d_i < best_dist {
-                    best_b = i;
-                    best_dist = d_i;
+                if before_pixels.contains(b + w) {
+                    if after_pixels.contains(a + w) {
+                        more.push((b + w, a + w));
+                    } else {
+                        more.push((b + w, a));
+                    }
+                } else if after_pixels.contains(a + w) {
+                    more.push((b, a + w));
                 }
-                if (before_positions[i].1.x - v.x).abs() > best_dist {
-                    break;
+                if before_pixels.contains(b.wrapping_sub(1)) {
+                    if after_pixels.contains(a.wrapping_sub(1)) {
+                        more.push((b.wrapping_sub(1), a.wrapping_sub(1)));
+                    } else {
+                        more.push((b.wrapping_sub(1), a));
+                    }
+                } else if after_pixels.contains(a.wrapping_sub(1)) {
+                    more.push((b, a.wrapping_sub(1)));
+                }
+                if before_pixels.contains(b.wrapping_sub(w)) {
+                    if after_pixels.contains(a.wrapping_sub(w)) {
+                        more.push((b.wrapping_sub(w), a.wrapping_sub(w)));
+                    } else {
+                        more.push((b.wrapping_sub(w), a));
+                    }
+                } else if after_pixels.contains(a.wrapping_sub(w)) {
+                    more.push((b, a.wrapping_sub(w)));
                 }
             }
-            for i in (0..b_guess).rev() {
-                let d_i = before_positions[i].1.distance(v);
-                if d_i < best_dist {
-                    best_b = i;
-                    best_dist = d_i;
-                }
-                if (before_positions[i].1.x - v.x).abs() > best_dist {
-                    break;
-                }
+            more.sort();
+            more.dedup();
+            for (b, a) in more.iter().copied() {
+                before_pixels.remove(b);
+                after_pixels.remove(a);
             }
-            connections.push((before_positions[best_b].0, a));
+            connections.extend(more.iter().copied());
+            todo = more;
         }
 
         connections.sort();
@@ -322,6 +301,81 @@ fn contiguous_pixels(w: usize, pixels: &mut SetUsize) -> Option<SetUsize> {
     Some(out)
 }
 
+fn outline(w: usize, pixels: &mut SetUsize) -> Option<Vec<usize>> {
+    let mut out = Vec::new();
+
+    let mut start = pixels.iter().next()?;
+    let mut best_diag = start % w + start / w;
+    for p in pixels.iter() {
+        if p % w + p / w < best_diag {
+            start = p;
+            best_diag = p % w + p / w;
+        }
+    }
+    pixels.remove(start);
+    out.push(start);
+    let mut last = start;
+    let mut next = if pixels.contains(last + 1) {
+        last + 1
+    } else if pixels.contains(last + w) {
+        last + w
+    } else {
+        return Some(out);
+    };
+    pixels.remove(next);
+    out.push(next);
+    loop {
+        let n = if next == last + 1 {
+            if pixels.contains(next.wrapping_sub(w)) {
+                next.wrapping_sub(w)
+            } else if pixels.contains(next + 1) {
+                next + 1
+            } else if pixels.contains(next + w) {
+                next + w
+            } else {
+                break;
+            }
+        } else if next == last + w {
+            if pixels.contains(next + 1) {
+                next + 1
+            } else if pixels.contains(next + w) {
+                next + w
+            } else if pixels.contains(next.wrapping_sub(1)) {
+                next.wrapping_sub(1)
+            } else {
+                break;
+            }
+        } else if next == last.wrapping_sub(1) {
+            if pixels.contains(next + w) {
+                next + w
+            } else if pixels.contains(next.wrapping_sub(1)) {
+                next.wrapping_sub(1)
+            } else if pixels.contains(next.wrapping_sub(w)) {
+                next.wrapping_sub(w)
+            } else {
+                break;
+            }
+        } else if next == last.wrapping_sub(w) {
+            if pixels.contains(next.wrapping_sub(1)) {
+                next.wrapping_sub(1)
+            } else if pixels.contains(next.wrapping_sub(w)) {
+                next.wrapping_sub(w)
+            } else if pixels.contains(next + 1) {
+                next + 1
+            } else {
+                break;
+            }
+        } else {
+            unreachable!()
+        };
+        pixels.remove(n);
+        out.push(n);
+        last = next;
+        next = n;
+    }
+    Some(out)
+}
+
 #[test]
 fn chunks_test() {
     let pixels = SetUsize::from_iter([2, 5, 8]);
@@ -365,15 +419,16 @@ impl Transform {
         } else {
             -n.axis.angle_between(-o.axis)
         };
+        full_angle = 0.0;
         // println!("full_angle is {full_angle}");
         let (sin, cos) = full_angle.sin_cos();
         let major_axis = o.axis;
-        let scale_major = if o.major > 0.0 && n.major > 0.0 {
+        let scale_major = if false && o.major > 0.0 && n.major > 0.0 {
             n.major / o.major
         } else {
             1.0
         };
-        let scale_minor = if o.minor > 0.0 && n.minor > 0.0 {
+        let scale_minor = if false && o.minor > 0.0 && n.minor > 0.0 {
             n.minor / o.minor
         } else {
             1.0
