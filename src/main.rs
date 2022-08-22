@@ -208,6 +208,7 @@ impl Drawing {
                         },
                     );
                     draw_rectangle_lines(x, THEIGHT * 0.5, FRAME_WIDTH, THEIGHT, 2.0, GRAY);
+                    self.time = time;
                 } else {
                     let which_frame = KEYFRAME.load(Ordering::Relaxed);
                     let old_time = self.keyframes[which_frame].time;

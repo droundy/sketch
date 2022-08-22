@@ -66,8 +66,15 @@ impl ChunkTween {
 
         let mut before_pixels = before.points.clone();
         let before_outline = outline(w, &mut before_pixels).unwrap();
+        let before_strokes = strokes_from_outline(w, &before_outline);
+        println!("strokes before are {}", before_strokes.len());
         let mut after_pixels = after.points.clone();
         let after_outline = outline(w, &mut after_pixels).unwrap();
+        let after_strokes = strokes_from_outline(w, &after_outline);
+        println!("strokes after are {}", after_strokes.len());
+        // for s in after_strokes.iter() {
+        //     println!("    {s:?}")
+        // }
 
         let mut i = 0;
         let mut j = 0;
@@ -301,18 +308,140 @@ fn contiguous_pixels(w: usize, pixels: &mut SetUsize) -> Option<SetUsize> {
     Some(out)
 }
 
+#[derive(Clone, Copy)]
+struct Width(usize);
+impl Width {
+    fn dist_sqr(self, a: usize, b: usize) -> f32 {
+        ((a % self.0) as f32 - (b % self.0) as f32).powi(2)
+            + ((a / self.0) as f32 - (b / self.0) as f32).powi(2)
+    }
+}
+
+fn closest_local_minimum(w: Width, outline: &[usize], i: usize) -> Option<usize> {
+    let mut min_dist2 = None;
+    let mut min_index = 0;
+    for j in 0..outline.len() {
+        let dj = w.dist_sqr(outline[i], outline[j]);
+        let djp1 = w.dist_sqr(outline[i], outline[(j + 1) % outline.len()]);
+        let djm1 = w.dist_sqr(outline[i], outline[(j + outline.len() - 1) % outline.len()]);
+        if j != i && dj < djp1 && dj < djm1 {
+            // This is a local minimum.
+            if let Some(existing_min) = min_dist2 {
+                if dj < existing_min {
+                    min_dist2 = Some(dj);
+                    min_index = j;
+                }
+            } else {
+                min_dist2 = Some(dj);
+                min_index = j;
+            }
+        }
+    }
+    if min_dist2.is_some() {
+        Some(min_index)
+    } else {
+        None
+    }
+}
+
+fn mutual_minimum(w: Width, outline: &[usize], i: usize) -> Option<usize> {
+    let j = closest_local_minimum(w, outline, i)?;
+    if closest_local_minimum(w, outline, j)? != i {
+        None
+    } else {
+        Some(j)
+    }
+}
+
+fn strokes_from_outline(w: usize, outline: &[usize]) -> Vec<Vec<(usize, usize)>> {
+    let w = Width(w);
+    let mut strokes = Vec::new();
+    let mut possibilities = SetUsize::from_iter(0..outline.len());
+    // while let Some(p) = possibilities.iter().next() {
+    for i in 0..outline.len() {
+        if possibilities.contains(i) {
+            if let Some(mut j) = mutual_minimum(w, outline, i) {
+                // We have found a new stroke, defined as a point that has
+                // another point closest to it which is also a local minimum.
+                possibilities.remove(j);
+                let mut stroke = vec![(i, j)];
+                // Now we want to find other members of this stroke.
+                let mut left = i;
+                let mut right = j;
+                let mut previous_lr = (0, 0);
+                while previous_lr != (left, right) {
+                    previous_lr = (left, right);
+                    let l = (left + 1) % outline.len();
+                    possibilities.remove(l);
+                    if let Some(r) = closest_local_minimum(w, outline, l) {
+                        possibilities.remove(r);
+                        if r == right {
+                            left = l;
+                            stroke.push((left, right));
+                        } else if r == (right + outline.len() - 1) % outline.len() {
+                            left = l;
+                            right = r;
+                            stroke.push((left, right));
+                        } else if r == (right + 2 * outline.len() - 2) % outline.len() {
+                            let intermediate = (right + outline.len() - 1) % outline.len();
+                            possibilities.remove(intermediate);
+                            stroke.push((left, intermediate));
+                            left = l;
+                            stroke.push((left, intermediate));
+                            right = r;
+                            stroke.push((left, right));
+                        }
+                    }
+                    let r = (right + outline.len() - 1) % outline.len();
+                    possibilities.remove(r);
+                    if let Some(l) = closest_local_minimum(w, outline, r) {
+                        possibilities.remove(l);
+                        if l == left {
+                            right = r;
+                            stroke.push((left, right));
+                        } else if l == (left + 1) % outline.len() {
+                            right = r;
+                            left = l;
+                            stroke.push((left, right));
+                        } else if l == (left + 2) % outline.len() {
+                            let intermediate = (left + 1) % outline.len();
+                            possibilities.remove(intermediate);
+                            stroke.push((intermediate, right));
+                            right = r;
+                            stroke.push((intermediate, right));
+                            left = l;
+                            stroke.push((left, right));
+                        }
+                    }
+                }
+                stroke.sort_unstable();
+                strokes.push(stroke);
+            }
+        }
+    }
+    strokes.retain(|v| v.len() > 1);
+    strokes
+    // strokes
+    //     .into_iter()
+    //     .map(|v| {
+    //         v.into_iter()
+    //             .map(|(i, j)| (outline[i], outline[j]))
+    //             .collect()
+    //     })
+    //     .collect()
+}
+
 fn outline(w: usize, pixels: &mut SetUsize) -> Option<Vec<usize>> {
     let mut out = Vec::new();
 
     let mut start = pixels.iter().next()?;
-    let mut best_diag = start % w + start / w;
+    let mut best_diag = (start % w) + (start / w);
     for p in pixels.iter() {
-        if p % w + p / w < best_diag {
+        if (p % w) + (p / w) < best_diag {
             start = p;
-            best_diag = p % w + p / w;
+            best_diag = (p % w) + (p / w);
         }
     }
-    pixels.remove(start);
     out.push(start);
     let mut last = start;
     let mut next = if pixels.contains(last + 1) {
@@ -372,6 +501,9 @@ fn outline(w: usize, pixels: &mut SetUsize) -> Option<Vec<usize>> {
         out.push(n);
         last = next;
         next = n;
+        if n == start {
+            break;
+        }
     }
     Some(out)
 }
