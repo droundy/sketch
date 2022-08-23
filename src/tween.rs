@@ -1,7 +1,6 @@
 use std::ops::Mul;
 
 use glam::Vec2;
-use ordered_float::OrderedFloat;
 use serde::{Deserialize, Serialize};
 use tinyset::SetUsize;
 
@@ -65,29 +64,73 @@ impl ChunkTween {
         let mut connections = Vec::new();
 
         let mut before_pixels = before.points.clone();
-        let before_outline = outline(w, &mut before_pixels).unwrap();
-        let before_strokes = strokes_from_outline(w, &before_outline);
-        println!("strokes before are {}", before_strokes.len());
         let mut after_pixels = after.points.clone();
+
+        let before_outline = outline(w, &mut before_pixels).unwrap();
         let after_outline = outline(w, &mut after_pixels).unwrap();
-        let after_strokes = strokes_from_outline(w, &after_outline);
-        println!("strokes after are {}", after_strokes.len());
-        // for s in after_strokes.iter() {
-        //     println!("    {s:?}")
-        // }
+
+        let before_positions = before_outline
+            .iter()
+            .map(|i| transform * Vec2::new((i % w) as f32, (i / w) as f32))
+            .collect::<Vec<_>>();
+        let after_positions = after_outline
+            .iter()
+            .map(|i| Vec2::new((i % w) as f32, (i / w) as f32))
+            .collect::<Vec<_>>();
 
         let mut i = 0;
         let mut j = 0;
-        while i < before_outline.len() && j < after_outline.len() {
-            connections.push((before_outline[i], after_outline[j]));
-            let ifrac = (i + 1) as f64 / before_outline.len() as f64;
-            let jfrac = (j + 1) as f64 / after_outline.len() as f64;
-            if ifrac < jfrac {
-                i += 1;
-            } else {
-                j += 1;
+        let mut closest = after_positions[j].distance_squared(before_positions[i]);
+        for jj in 0..after_outline.len() {
+            if after_positions[jj].distance_squared(before_positions[i]) < closest {
+                j = jj;
+                closest = after_positions[jj].distance_squared(before_positions[i]);
             }
         }
+        connections.push((before_outline[i], after_outline[j]));
+        let mut irev = i;
+        let mut jrev = j;
+
+        while connections.len() < after_outline.len() + before_outline.len() {
+            let inext = (i + 1) % before_outline.len();
+            let jnext = (j + 1) % after_outline.len();
+            let iprev = (irev + before_outline.len() - 1) % before_outline.len();
+            let jprev = (jrev + after_outline.len() - 1) % after_outline.len();
+
+            let mut best_d = 1e30;
+            let mut chosen_i = 0;
+            let mut chosen_j = 0;
+
+            for (ii, jj) in [(inext, j), (i, jnext), (inext, jnext)] {
+                let d = before_positions[ii].distance_squared(after_positions[jj]);
+                if d < best_d {
+                    best_d = d;
+                    chosen_i = ii;
+                    chosen_j = jj;
+                }
+            }
+            let mut moving_forward = true;
+            for (ii, jj) in [(iprev, jrev), (irev, jprev), (iprev, jprev)] {
+                let d = before_positions[ii].distance_squared(after_positions[jj]);
+                if d < best_d {
+                    moving_forward = false;
+                    best_d = d;
+                    chosen_i = ii;
+                    chosen_j = jj;
+                }
+            }
+            connections.push((before_outline[chosen_i], after_outline[chosen_j]));
+            if moving_forward {
+                i = chosen_i;
+                j = chosen_j;
+            } else {
+                irev = chosen_i;
+                jrev = chosen_j;
+            }
+        }
+        connections.sort();
+        connections.dedup();
+
         let mut todo = connections.clone();
 
         while !before_pixels.is_empty() || !after_pixels.is_empty() {
@@ -174,6 +217,7 @@ impl ChunkTween {
 pub struct Chunk {
     points: SetUsize,
     center: Vec2,
+    extrema: [Vec2; 4],
     area: usize,
     // The major axis length
     major: f32,
@@ -194,11 +238,33 @@ impl Chunk {
     pub fn new(w: usize, points: SetUsize) -> Self {
         let area = points.len();
         let mut center = Vec2::ZERO;
+        let top = points.iter().next().unwrap();
+        let mut top = Vec2::new((top % w) as f32, (top / w) as f32);
+        let mut left = top;
+        let mut bottom = top;
+        let mut right = top;
         for p in points.iter() {
-            let x = (p % w) as f32;
-            let y = (p / w) as f32;
-            center += Vec2::new(x, y);
+            let v = Vec2::new((p % w) as f32, (p / w) as f32);
+            center += v;
+            // Combine x and y to get approximations of x and y that are likely
+            // to be unique, so we will always get the same extrema, regardless
+            // of the order of iteration.
+            let skewy = |v: Vec2| v.y as f64 + 1e-7 * v.x as f64;
+            let skewx = |v: Vec2| v.x as f64 + 1e-7 * v.y as f64;
+            if skewy(v) < skewy(top) {
+                top = v;
+            }
+            if skewy(v) > skewy(bottom) {
+                bottom = v;
+            }
+            if skewx(v) < skewx(left) {
+                left = v;
+            }
+            if skewx(v) > skewx(right) {
+                right = v;
+            }
         }
+        let extrema = [top, right, bottom, left];
         center /= area as f32;
         let mut x2 = 0.0;
         let mut y2 = 0.0;
@@ -273,6 +339,7 @@ impl Chunk {
             area,
             points,
             center,
+            extrema,
             major,
             minor,
             axis,
@@ -306,129 +373,6 @@ fn contiguous_pixels(w: usize, pixels: &mut SetUsize) -> Option<SetUsize> {
         }
     }
     Some(out)
-}
-
-#[derive(Clone, Copy)]
-struct Width(usize);
-impl Width {
-    fn dist_sqr(self, a: usize, b: usize) -> f32 {
-        ((a % self.0) as f32 - (b % self.0) as f32).powi(2)
-            + ((a / self.0) as f32 - (b / self.0) as f32).powi(2)
-    }
-}
-
-fn closest_local_minimum(w: Width, outline: &[usize], i: usize) -> Option<usize> {
-    let mut min_dist2 = None;
-    let mut min_index = 0;
-    for j in 0..outline.len() {
-        let dj = w.dist_sqr(outline[i], outline[j]);
-        let djp1 = w.dist_sqr(outline[i], outline[(j + 1) % outline.len()]);
-        let djm1 = w.dist_sqr(outline[i], outline[(j + outline.len() - 1) % outline.len()]);
-        if j != i && dj < djp1 && dj < djm1 {
-            // This is a local minimum.
-            if let Some(existing_min) = min_dist2 {
-                if dj < existing_min {
-                    min_dist2 = Some(dj);
-                    min_index = j;
-                }
-            } else {
-                min_dist2 = Some(dj);
-                min_index = j;
-            }
-        }
-    }
-    if min_dist2.is_some() {
-        Some(min_index)
-    } else {
-        None
-    }
-}
-
-fn mutual_minimum(w: Width, outline: &[usize], i: usize) -> Option<usize> {
-    let j = closest_local_minimum(w, outline, i)?;
-    if closest_local_minimum(w, outline, j)? != i {
-        None
-    } else {
-        Some(j)
-    }
-}
-
-fn strokes_from_outline(w: usize, outline: &[usize]) -> Vec<Vec<(usize, usize)>> {
-    let w = Width(w);
-    let mut strokes = Vec::new();
-    let mut possibilities = SetUsize::from_iter(0..outline.len());
-    // while let Some(p) = possibilities.iter().next() {
-    for i in 0..outline.len() {
-        if possibilities.contains(i) {
-            if let Some(mut j) = mutual_minimum(w, outline, i) {
-                // We have found a new stroke, defined as a point that has
-                // another point closest to it which is also a local minimum.
-                possibilities.remove(j);
-                let mut stroke = vec![(i, j)];
-                // Now we want to find other members of this stroke.
-                let mut left = i;
-                let mut right = j;
-                let mut previous_lr = (0, 0);
-                while previous_lr != (left, right) {
-                    previous_lr = (left, right);
-                    let l = (left + 1) % outline.len();
-                    possibilities.remove(l);
-                    if let Some(r) = closest_local_minimum(w, outline, l) {
-                        possibilities.remove(r);
-                        if r == right {
-                            left = l;
-                            stroke.push((left, right));
-                        } else if r == (right + outline.len() - 1) % outline.len() {
-                            left = l;
-                            right = r;
-                            stroke.push((left, right));
-                        } else if r == (right + 2 * outline.len() - 2) % outline.len() {
-                            let intermediate = (right + outline.len() - 1) % outline.len();
-                            possibilities.remove(intermediate);
-                            stroke.push((left, intermediate));
-                            left = l;
-                            stroke.push((left, intermediate));
-                            right = r;
-                            stroke.push((left, right));
-                        }
-                    }
-                    let r = (right + outline.len() - 1) % outline.len();
-                    possibilities.remove(r);
-                    if let Some(l) = closest_local_minimum(w, outline, r) {
-                        possibilities.remove(l);
-                        if l == left {
-                            right = r;
-                            stroke.push((left, right));
-                        } else if l == (left + 1) % outline.len() {
-                            right = r;
-                            left = l;
-                            stroke.push((left, right));
-                        } else if l == (left + 2) % outline.len() {
-                            let intermediate = (left + 1) % outline.len();
-                            possibilities.remove(intermediate);
-                            stroke.push((intermediate, right));
-                            right = r;
-                            stroke.push((intermediate, right));
-                            left = l;
-                            stroke.push((left, right));
-                        }
-                    }
-                }
-                stroke.sort_unstable();
-                strokes.push(stroke);
-            }
-        }
-    }
-    strokes.retain(|v| v.len() > 1);
-    strokes
-    // strokes
-    //     .into_iter()
-    //     .map(|v| {
-    //         v.into_iter()
-    //             .map(|(i, j)| (outline[i], outline[j]))
-    //             .collect()
-    //     })
-    //     .collect()
 }
 
 fn outline(w: usize, pixels: &mut SetUsize) -> Option<Vec<usize>> {
@@ -546,21 +490,52 @@ pub struct Transform {
 
 impl Transform {
     pub fn new(o: &Chunk, n: &Chunk) -> Self {
-        let mut full_angle = if o.axis.dot(n.axis) > 0.0 {
+        let num_equal_extrema = o
+            .extrema
+            .iter()
+            .zip(n.extrema.iter())
+            .filter(|(a, b)| a == b)
+            .count();
+
+        let differences = |extrema: [Vec2; 4]| {
+            [
+                extrema[1] - extrema[0],
+                extrema[2] - extrema[1],
+                extrema[3] - extrema[2],
+                extrema[0] - extrema[3],
+            ]
+        };
+        let num_equal_differences = differences(o.extrema)
+            .into_iter()
+            .zip(differences(n.extrema).into_iter())
+            .filter(|(a, b)| !a.abs_diff_eq(Vec2::ZERO, 0.1) && a.abs_diff_eq(*b, 0.5))
+            .count();
+        let mut full_angle = if num_equal_differences >= 1 {
+            // If the vector difference between two extrema has not changed, then we can conclude that
+            // the chunk as a whole has not rotated.
+            0.0
+        } else if o.axis.dot(n.axis) > 0.0 {
             -n.axis.angle_between(o.axis)
         } else {
             -n.axis.angle_between(-o.axis)
         };
-        full_angle = 0.0;
         // println!("full_angle is {full_angle}");
         let (sin, cos) = full_angle.sin_cos();
         let major_axis = o.axis;
-        let scale_major = if false && o.major > 0.0 && n.major > 0.0 {
+        let scale_major = if full_angle == 0.0 && o.axis.angle_between(n.axis).abs() > 0.05 {
+            // Do not scale the major or minor axis, if we have eliminated rotation, and yet
+            // the major/minor axes have shifted.
+            1.0
+        } else if o.major > 0.0 && n.major > 0.0 {
             n.major / o.major
         } else {
             1.0
         };
-        let scale_minor = if false && o.minor > 0.0 && n.minor > 0.0 {
+        let scale_minor = if full_angle == 0.0 && o.axis.angle_between(n.axis).abs() > 0.05 {
+            // Do not scale the major or minor axis, if we have eliminated rotation, and yet
+            // the major/minor axes have shifted.
+            1.0
+        } else if o.minor > 0.0 && n.minor > 0.0 {
             n.minor / o.minor
         } else {
             1.0
@@ -572,8 +547,31 @@ impl Transform {
         // println!("old major {} and minor {}", o.major, o.minor);
         // println!("new major {} and minor {}", n.major, n.minor);
         // println!("the major axis is {} {}", major_axis.x, major_axis.y);
-        let center = o.center;
-        let translation = n.center - o.center;
+        let mut center = o.center;
+        let mut translation = n.center - o.center;
+        if num_equal_extrema > 0 {
+            translation = Vec2::ZERO;
+        } else if full_angle == 0.0 && num_equal_differences > 0 {
+            // We want to set the center to be the center of the rigid part
+            // of the image.
+
+            let which_pair_equal = differences(o.extrema)
+                .into_iter()
+                .zip(differences(n.extrema).into_iter())
+                .enumerate()
+                .filter(|(_, (a, b))| !a.abs_diff_eq(Vec2::ZERO, 0.1) && a.abs_diff_eq(*b, 0.5))
+                .map(|(i, _)| i)
+                .next()
+                .unwrap();
+            translation = n.extrema[which_pair_equal] - o.extrema[which_pair_equal];
+            center = o.extrema[which_pair_equal];
+        }
+        // println!("full_angle {full_angle}");
+        // println!("num_equal_extrema {num_equal_extrema}");
+        // println!("num_equal_differences {num_equal_differences}");
+        // for i in 0..4 {
+        //     println!("    {:?} {:?}", o.extrema[i], n.extrema[i]);
+        // }
         Transform {
             full_angle,
             sin,
