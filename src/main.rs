@@ -15,6 +15,7 @@ use macroquad::texture::{draw_texture_ex, DrawTextureParams, Image, Texture2D};
 use macroquad::ui::root_ui;
 
 mod layer;
+mod pixels;
 mod tween;
 use layer::{clamp, Layer};
 use serde::{Deserialize, Serialize};

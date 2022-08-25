@@ -4,14 +4,14 @@ use macroquad::prelude::{screen_height, screen_width, Color, Image, Vec2};
 use serde::{Deserialize, Serialize};
 use tinyset::SetUsize;
 
-use crate::tween::Tween;
+use crate::{pixels::Pixels, tween::Tween};
 
 #[derive(Clone, Serialize, Deserialize)]
 struct Bitmap {
     time: f32,
     pixels: SetUsize,
     #[serde(skip)]
-    fill_pixels: SetUsize,
+    fill_pixels: Pixels,
 }
 
 #[derive(Clone, Serialize, Deserialize)]
@@ -50,7 +50,7 @@ impl Layer {
                 time,
                 // texture: Texture2D::from_image(&bitmap),
                 pixels: SetUsize::new(),
-                fill_pixels: SetUsize::new(),
+                fill_pixels: Pixels::default(),
             }],
             tweens: HashMap::new(),
         }
@@ -70,40 +70,34 @@ impl Layer {
         self.tweens.retain(|k, _| k.0 != which && k.1 != which);
         let k = &mut self.keyframes[which];
         {
-            let mut outside = vec![false; self.width * self.height];
-            let image_len = outside.len();
+            let mut inside = vec![true; self.width * self.height];
+            let image_len = inside.len();
             for i in k.pixels.iter().filter(|&i| i < image_len) {
-                outside[i] = true;
+                inside[i] = false;
             }
 
             let mut todo = vec![0];
             let w = self.width;
-            outside[0] = true;
+            inside[0] = false;
             while let Some(i) = todo.pop() {
-                if i > 0 && !outside[i - 1] {
-                    outside[i - 1] = true;
+                if i > 0 && inside[i - 1] {
+                    inside[i - 1] = false;
                     todo.push(i - 1);
                 }
-                if i + 1 < outside.len() && !outside[i + 1] {
-                    outside[i + 1] = true;
+                if i + 1 < image_len && inside[i + 1] {
+                    inside[i + 1] = false;
                     todo.push(i + 1);
                 }
-                if i >= w && !outside[i - w] {
-                    outside[i - w] = true;
+                if i >= w && inside[i - w] {
+                    inside[i - w] = false;
                     todo.push(i - w);
                 }
-                if i + w < outside.len() && !outside[i + w] {
-                    outside[i + w] = true;
+                if i + w < image_len && inside[i + w] {
+                    inside[i + w] = false;
                     todo.push(i + w);
                 }
             }
-            k.fill_pixels = SetUsize::from_iter(
-                outside
-                    .into_iter()
-                    .enumerate()
-                    .filter(|(_, b)| !*b)
-                    .map(|x| x.0),
-            );
+            k.fill_pixels = Pixels::from(inside);
         }
     }
     pub fn handle_modified_bitmap(&mut self, time: f32) {
@@ -279,7 +273,7 @@ impl Layer {
             return;
         }
         let mut pixels = SetUsize::new();
-        let mut fill_pixels = SetUsize::new();
+        let mut fill_pixels = Pixels::default();
         if times.0 == times.1 {
             // In this case, self.image didn't get updated!
             pixels = self.keyframes[times.0].pixels.clone();

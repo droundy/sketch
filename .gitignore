@@ -1,2 +1,5 @@
 /target
 *.json
+*.sketch
+perf.data*
+flamegraph.svg
