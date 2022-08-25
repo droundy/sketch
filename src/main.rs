@@ -614,6 +614,8 @@ async fn main() {
                 gif::Encoder::new(&mut image, width as u16, height as u16, &color_map).unwrap();
             encoder.set_repeat(gif::Repeat::Infinite).unwrap();
             let mut t = 0.0;
+            let mut old_pixels = Vec::new();
+            let mut delay = 0;
             while t <= 1.0 {
                 let mut frame = gif::Frame::default();
                 frame.width = width as u16;
@@ -623,9 +625,16 @@ async fn main() {
                     l.draw_gif(t, 2 * i as u8 + 1, &mut buf);
                 }
                 frame.buffer = Cow::Borrowed(&buf);
-                frame.delay = 2;
-                encoder.write_frame(&frame).unwrap();
+                delay += 2;
+                frame.delay = delay;
+                // Only write a new frame if something has changed.
+                if buf != old_pixels || t + 0.01 > 1.0 {
+                    encoder.write_frame(&frame).unwrap();
+                    delay = 0;
+                }
+                print!("\rCreating gif: {t:4.2}");
                 t += 0.01;
+                old_pixels = buf;
             }
             return;
         }
