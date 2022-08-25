@@ -187,6 +187,71 @@ impl Layer {
         }
     }
 
+    pub fn draw_gif(&mut self, time: f32, color: u8, pixels: &mut [u8]) {
+        let (before, after) = self.closest_frames(time);
+        let mut bitmap = vec![false; self.width * self.height];
+        if before == after {
+            let pixels_len = pixels.len();
+            for i in self.keyframes[before]
+                .pixels
+                .iter()
+                .filter(|&i| i < pixels_len)
+            {
+                pixels[i] = color;
+            }
+            if self.fill_color[3] > 0 {
+                for i in self.keyframes[before].fill_pixels.iter() {
+                    pixels[i] = color + 1;
+                }
+            }
+        } else {
+            if self.tweens.get(&(before, after)).is_none() {
+                self.tweens.insert(
+                    (before, after),
+                    Tween::new(
+                        self.width,
+                        self.keyframes[before].pixels.clone(),
+                        self.keyframes[after].pixels.clone(),
+                    ),
+                );
+            }
+            let tween = self.tweens.get_mut(&(before, after)).unwrap();
+            let fraction = (time - self.keyframes[before].time)
+                / (self.keyframes[after].time - self.keyframes[before].time);
+            tween.draw(fraction, &mut bitmap);
+            for (_, out) in bitmap.iter().zip(pixels.iter_mut()).filter(|(b, _)| **b) {
+                *out = color;
+            }
+            if self.fill_color[3] > 0 {
+                let mut outside = bitmap.clone();
+                let mut todo = vec![0];
+                let w = self.width;
+                outside[0] = true;
+                while let Some(i) = todo.pop() {
+                    if i > 0 && !outside[i - 1] {
+                        outside[i - 1] = true;
+                        todo.push(i - 1);
+                    }
+                    if i + 1 < outside.len() && !outside[i + 1] {
+                        outside[i + 1] = true;
+                        todo.push(i + 1);
+                    }
+                    if i >= w && !outside[i - w] {
+                        outside[i - w] = true;
+                        todo.push(i - w);
+                    }
+                    if i + w < outside.len() && !outside[i + w] {
+                        outside[i + w] = true;
+                        todo.push(i + w);
+                    }
+                }
+                for (_, out) in outside.iter().zip(pixels.iter_mut()).filter(|(b, _)| !**b) {
+                    *out = color + 1;
+                }
+            }
+        }
+    }
+
     pub fn closest_time(&self, time: f32) -> f32 {
         self.keyframes[self.closest_frame(time)].time
     }

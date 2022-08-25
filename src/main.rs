@@ -1,3 +1,4 @@
+use std::borrow::Cow;
 use std::time::Instant;
 use std::{
     f32::consts::PI,
@@ -601,6 +602,31 @@ async fn main() {
         // clear_background(WHITE);
         if is_key_pressed(KeyCode::Escape) {
             drawing.save(&filename).ok();
+            let gifname = format!("{filename}.gif");
+            let mut image = std::fs::File::create(&gifname).unwrap();
+            let mut color_map = Vec::with_capacity(drawing.layers.len() * 6);
+            color_map.extend([0, 0, 0]);
+            for l in drawing.layers.iter() {
+                color_map.extend(&l.color[0..3]);
+                color_map.extend(&l.fill_color[0..3]);
+            }
+            let mut encoder =
+                gif::Encoder::new(&mut image, width as u16, height as u16, &color_map).unwrap();
+            encoder.set_repeat(gif::Repeat::Infinite).unwrap();
+            let mut t = 0.0;
+            while t <= 1.0 {
+                let mut frame = gif::Frame::default();
+                frame.width = width as u16;
+                frame.height = height as u16;
+                let mut buf = vec![0; width * height];
+                for (i, l) in drawing.layers.iter_mut().enumerate() {
+                    l.draw_gif(t, 2 * i as u8 + 1, &mut buf);
+                }
+                frame.buffer = Cow::Borrowed(&buf);
+                frame.delay = 2;
+                encoder.write_frame(&frame).unwrap();
+                t += 0.01;
+            }
             return;
         }
         if drawing.am_animating {
