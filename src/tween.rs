@@ -133,7 +133,14 @@ impl ChunkTween {
 
         let mut todo = connections.clone();
 
-        while !before_pixels.is_empty() || !after_pixels.is_empty() {
+        // Apparently this "flood fill" algorithm can sometimes miss a few pixels, so
+        // rather than keeping going until all pixels are connected, we quit when we
+        // stop making progress.
+        let mut last_before_len = before_pixels.len() + 1;
+        let mut last_after_len = after_pixels.len() + 1;
+        while before_pixels.len() != last_before_len && after_pixels.len() != last_after_len {
+            last_before_len = before_pixels.len();
+            last_after_len = after_pixels.len();
             let mut more = Vec::new();
             for (b, a) in todo.drain(..) {
                 if before_pixels.contains(b + 1) {
