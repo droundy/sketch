@@ -598,10 +598,13 @@ async fn main() {
     let width = drawing.width as usize;
     let height = drawing.height as usize;
     let mut started = Instant::now();
+    let mut needs_save = false;
     loop {
         // clear_background(WHITE);
         if is_key_pressed(KeyCode::Escape) {
-            drawing.save(&filename).ok();
+            if needs_save {
+                drawing.save(&filename).ok();
+            }
             let gifname = format!("{filename}.gif");
             let mut image = std::fs::File::create(&gifname).unwrap();
             let mut color_map = Vec::with_capacity(drawing.layers.len() * 6);
@@ -657,6 +660,7 @@ async fn main() {
         }
         let color_selected = drawing.color_selector();
         if color_selected {
+            needs_save = true;
             drawing.handle_modified_bitmap(&mut frame_images, &mut frame_textures);
         }
         let frame_selected = drawing.frame_selector(&mut frame_images, &mut frame_textures);
@@ -740,6 +744,7 @@ async fn main() {
                 }
                 drawing.pen_drew(drawn);
             } else if old_pos.is_some() {
+                needs_save = true;
                 drawing.handle_modified_bitmap(&mut frame_images, &mut frame_textures);
                 old_pos = None;
             }
