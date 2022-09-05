@@ -1,4 +1,4 @@
-use std::ops::Mul;
+use std::{ops::Mul, time::Instant};
 
 use glam::Vec2;
 use serde::{Deserialize, Serialize};
@@ -130,9 +130,19 @@ impl ChunkTween {
         }
         connections.sort();
         connections.dedup();
+        println!(
+            "Outline gave {} connections between {} and {} pixels",
+            connections.len(),
+            before_positions.len(),
+            after_positions.len()
+        );
 
         let mut todo = connections.clone();
 
+        for (b, a) in todo.iter().copied() {
+            before_pixels.remove(b);
+            after_pixels.remove(a);
+        }
         // Apparently this "flood fill" algorithm can sometimes miss a few pixels, so
         // rather than keeping going until all pixels are connected, we quit when we
         // stop making progress.
@@ -143,55 +153,79 @@ impl ChunkTween {
             last_after_len = after_pixels.len();
             let mut more = Vec::new();
             for (b, a) in todo.drain(..) {
+                let mut even_more = Vec::new();
                 if before_pixels.contains(b + 1) {
                     if after_pixels.contains(a + 1) {
-                        more.push((b + 1, a + 1));
+                        even_more.push((b + 1, a + 1));
                     } else {
-                        more.push((b + 1, a));
+                        even_more.push((b + 1, a));
                     }
                 } else if after_pixels.contains(a + 1) {
-                    more.push((b, a + 1));
+                    even_more.push((b, a + 1));
                 }
                 if before_pixels.contains(b + w) {
                     if after_pixels.contains(a + w) {
-                        more.push((b + w, a + w));
+                        even_more.push((b + w, a + w));
                     } else {
-                        more.push((b + w, a));
+                        even_more.push((b + w, a));
                     }
                 } else if after_pixels.contains(a + w) {
-                    more.push((b, a + w));
+                    even_more.push((b, a + w));
                 }
                 if before_pixels.contains(b.wrapping_sub(1)) {
                     if after_pixels.contains(a.wrapping_sub(1)) {
-                        more.push((b.wrapping_sub(1), a.wrapping_sub(1)));
+                        even_more.push((b.wrapping_sub(1), a.wrapping_sub(1)));
                     } else {
-                        more.push((b.wrapping_sub(1), a));
+                        even_more.push((b.wrapping_sub(1), a));
                     }
                 } else if after_pixels.contains(a.wrapping_sub(1)) {
-                    more.push((b, a.wrapping_sub(1)));
+                    even_more.push((b, a.wrapping_sub(1)));
                 }
                 if before_pixels.contains(b.wrapping_sub(w)) {
                     if after_pixels.contains(a.wrapping_sub(w)) {
-                        more.push((b.wrapping_sub(w), a.wrapping_sub(w)));
+                        even_more.push((b.wrapping_sub(w), a.wrapping_sub(w)));
                     } else {
-                        more.push((b.wrapping_sub(w), a));
+                        even_more.push((b.wrapping_sub(w), a));
                     }
                 } else if after_pixels.contains(a.wrapping_sub(w)) {
-                    more.push((b, a.wrapping_sub(w)));
+                    even_more.push((b, a.wrapping_sub(w)));
+                }
+                for (b, a) in even_more.into_iter() {
+                    before_pixels.remove(b);
+                    after_pixels.remove(a);
+                    more.push((b, a));
                 }
             }
             more.sort();
             more.dedup();
+            println!(
+                "    Found {} more connections with {} and {} pixels left to go...",
+                more.len(),
+                before_pixels.len(),
+                after_pixels.len()
+            );
             for (b, a) in more.iter().copied() {
                 before_pixels.remove(b);
                 after_pixels.remove(a);
             }
+            println!(
+                "We handled {} before and {} after",
+                last_before_len - before_pixels.len(),
+                last_after_len - after_pixels.len()
+            );
             connections.extend(more.iter().copied());
             todo = more;
         }
 
         connections.sort();
         connections.dedup();
+        println!(
+            "Found {} connections between {} and {} pixels for {} connections per pixel",
+            connections.len(),
+            before_positions.len(),
+            after_positions.len(),
+            connections.len() as f64 / before_positions.len() as f64
+        );
 
         ChunkTween {
             w,
@@ -206,6 +240,7 @@ impl ChunkTween {
         assert!(fraction <= 1.0);
         let reverse_transform = (1.0 - fraction) * self.transform.reverse();
         let transform = fraction * self.transform;
+        let start = Instant::now();
         for &(b, a) in self.connections.iter() {
             let b = transform * Vec2::new((b % self.w) as f32, (b / self.w) as f32);
             let a = reverse_transform * Vec2::new((a % self.w) as f32, (a / self.w) as f32);
@@ -217,6 +252,13 @@ impl ChunkTween {
                     *p = true;
                 }
             }
+        }
+        if start.elapsed().as_secs_f64() > 6e-3 {
+            println!(
+                "Number connections is {}, took {:.2} ms",
+                self.connections.len(),
+                start.elapsed().as_secs_f64() * 1e3
+            );
         }
     }
 }
@@ -529,7 +571,7 @@ impl Transform {
         // println!("full_angle is {full_angle}");
         let (sin, cos) = full_angle.sin_cos();
         let major_axis = o.axis;
-        let scale_major = if full_angle == 0.0 && o.axis.angle_between(n.axis).abs() > 0.05 {
+        let mut scale_major = if full_angle == 0.0 && o.axis.angle_between(n.axis).abs() > 0.05 {
             // Do not scale the major or minor axis, if we have eliminated rotation, and yet
             // the major/minor axes have shifted.
             1.0
@@ -538,7 +580,7 @@ impl Transform {
         } else {
             1.0
         };
-        let scale_minor = if full_angle == 0.0 && o.axis.angle_between(n.axis).abs() > 0.05 {
+        let mut scale_minor = if full_angle == 0.0 && o.axis.angle_between(n.axis).abs() > 0.05 {
             // Do not scale the major or minor axis, if we have eliminated rotation, and yet
             // the major/minor axes have shifted.
             1.0
@@ -548,6 +590,11 @@ impl Transform {
             1.0
         };
         if o.major / o.minor < 1.1 || n.major / n.minor < 1.1 {
+            if full_angle.abs() > 0.1 {
+                let scale = (scale_major * scale_minor).sqrt();
+                scale_major = scale;
+                scale_minor = scale;
+            }
             full_angle = 0.0;
         }
         // println!("scales are: {scale_major} and {scale_minor}");

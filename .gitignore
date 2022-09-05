@@ -3,3 +3,4 @@
 *.sketch
 perf.data*
 flamegraph.svg
+*.gif
