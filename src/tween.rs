@@ -68,6 +68,11 @@ impl ChunkTween {
 
         let before_outline = outline(w, &mut before_pixels).unwrap();
         let after_outline = outline(w, &mut after_pixels).unwrap();
+        println!(
+            "Out of {} pixels before, {} participate in the outline.",
+            before_pixels.len(),
+            before_outline.len()
+        );
 
         let before_positions = before_outline
             .iter()
@@ -77,6 +82,36 @@ impl ChunkTween {
             .iter()
             .map(|i| Vec2::new((i % w) as f32, (i / w) as f32))
             .collect::<Vec<_>>();
+
+        let (smaller, larger) = if before_outline.len() < after_outline.len() {
+            (&before_outline, &after_outline)
+        } else {
+            (&after_outline, &before_outline)
+        };
+
+        let smaller_positions = smaller
+            .iter()
+            .map(|i| transform * Vec2::new((i % w) as f32, (i / w) as f32))
+            .collect::<Vec<_>>();
+        let larger_positions = larger
+            .iter()
+            .map(|i| Vec2::new((i % w) as f32, (i / w) as f32))
+            .collect::<Vec<_>>();
+
+        let mut outline_connections = Vec::with_capacity(smaller.len());
+        for (i, pos) in smaller_positions.iter().copied().enumerate() {
+            let mut j = 0;
+            let mut closest = larger_positions[j].distance_squared(pos);
+            for (jj, posj) in larger_positions.iter().copied().enumerate() {
+                if posj.distance_squared(pos) < closest {
+                    j = jj;
+                    closest = posj.distance_squared(pos);
+                }
+            }
+            outline_connections.push((i, j));
+        }
+
+        let outline_connections = make_monotonic(outline_connections);
 
         let mut i = 0;
         let mut j = 0;
@@ -133,99 +168,99 @@ impl ChunkTween {
         println!(
             "Outline gave {} connections between {} and {} pixels",
             connections.len(),
-            before_positions.len(),
-            after_positions.len()
+            before_outline.len(),
+            after_outline.len()
         );
 
-        let mut todo = connections.clone();
+        // let mut todo = connections.clone();
 
-        for (b, a) in todo.iter().copied() {
-            before_pixels.remove(b);
-            after_pixels.remove(a);
-        }
-        // Apparently this "flood fill" algorithm can sometimes miss a few pixels, so
-        // rather than keeping going until all pixels are connected, we quit when we
-        // stop making progress.
-        let mut last_before_len = before_pixels.len() + 1;
-        let mut last_after_len = after_pixels.len() + 1;
-        while before_pixels.len() != last_before_len && after_pixels.len() != last_after_len {
-            last_before_len = before_pixels.len();
-            last_after_len = after_pixels.len();
-            let mut more = Vec::new();
-            for (b, a) in todo.drain(..) {
-                let mut even_more = Vec::new();
-                if before_pixels.contains(b + 1) {
-                    if after_pixels.contains(a + 1) {
-                        even_more.push((b + 1, a + 1));
-                    } else {
-                        even_more.push((b + 1, a));
-                    }
-                } else if after_pixels.contains(a + 1) {
-                    even_more.push((b, a + 1));
-                }
-                if before_pixels.contains(b + w) {
-                    if after_pixels.contains(a + w) {
-                        even_more.push((b + w, a + w));
-                    } else {
-                        even_more.push((b + w, a));
-                    }
-                } else if after_pixels.contains(a + w) {
-                    even_more.push((b, a + w));
-                }
-                if before_pixels.contains(b.wrapping_sub(1)) {
-                    if after_pixels.contains(a.wrapping_sub(1)) {
-                        even_more.push((b.wrapping_sub(1), a.wrapping_sub(1)));
-                    } else {
-                        even_more.push((b.wrapping_sub(1), a));
-                    }
-                } else if after_pixels.contains(a.wrapping_sub(1)) {
-                    even_more.push((b, a.wrapping_sub(1)));
-                }
-                if before_pixels.contains(b.wrapping_sub(w)) {
-                    if after_pixels.contains(a.wrapping_sub(w)) {
-                        even_more.push((b.wrapping_sub(w), a.wrapping_sub(w)));
-                    } else {
-                        even_more.push((b.wrapping_sub(w), a));
-                    }
-                } else if after_pixels.contains(a.wrapping_sub(w)) {
-                    even_more.push((b, a.wrapping_sub(w)));
-                }
-                for (b, a) in even_more.into_iter() {
-                    before_pixels.remove(b);
-                    after_pixels.remove(a);
-                    more.push((b, a));
-                }
-            }
-            more.sort();
-            more.dedup();
-            println!(
-                "    Found {} more connections with {} and {} pixels left to go...",
-                more.len(),
-                before_pixels.len(),
-                after_pixels.len()
-            );
-            for (b, a) in more.iter().copied() {
-                before_pixels.remove(b);
-                after_pixels.remove(a);
-            }
-            println!(
-                "We handled {} before and {} after",
-                last_before_len - before_pixels.len(),
-                last_after_len - after_pixels.len()
-            );
-            connections.extend(more.iter().copied());
-            todo = more;
-        }
+        // for (b, a) in todo.iter().copied() {
+        //     before_pixels.remove(b);
+        //     after_pixels.remove(a);
+        // }
+        // // Apparently this "flood fill" algorithm can sometimes miss a few pixels, so
+        // // rather than keeping going until all pixels are connected, we quit when we
+        // // stop making progress.
+        // let mut last_before_len = before_pixels.len() + 1;
+        // let mut last_after_len = after_pixels.len() + 1;
+        // while before_pixels.len() != last_before_len && after_pixels.len() != last_after_len {
+        //     last_before_len = before_pixels.len();
+        //     last_after_len = after_pixels.len();
+        //     let mut more = Vec::new();
+        //     for (b, a) in todo.drain(..) {
+        //         let mut even_more = Vec::new();
+        //         if before_pixels.contains(b + 1) {
+        //             if after_pixels.contains(a + 1) {
+        //                 even_more.push((b + 1, a + 1));
+        //             } else {
+        //                 even_more.push((b + 1, a));
+        //             }
+        //         } else if after_pixels.contains(a + 1) {
+        //             even_more.push((b, a + 1));
+        //         }
+        //         if before_pixels.contains(b + w) {
+        //             if after_pixels.contains(a + w) {
+        //                 even_more.push((b + w, a + w));
+        //             } else {
+        //                 even_more.push((b + w, a));
+        //             }
+        //         } else if after_pixels.contains(a + w) {
+        //             even_more.push((b, a + w));
+        //         }
+        //         if before_pixels.contains(b.wrapping_sub(1)) {
+        //             if after_pixels.contains(a.wrapping_sub(1)) {
+        //                 even_more.push((b.wrapping_sub(1), a.wrapping_sub(1)));
+        //             } else {
+        //                 even_more.push((b.wrapping_sub(1), a));
+        //             }
+        //         } else if after_pixels.contains(a.wrapping_sub(1)) {
+        //             even_more.push((b, a.wrapping_sub(1)));
+        //         }
+        //         if before_pixels.contains(b.wrapping_sub(w)) {
+        //             if after_pixels.contains(a.wrapping_sub(w)) {
+        //                 even_more.push((b.wrapping_sub(w), a.wrapping_sub(w)));
+        //             } else {
+        //                 even_more.push((b.wrapping_sub(w), a));
+        //             }
+        //         } else if after_pixels.contains(a.wrapping_sub(w)) {
+        //             even_more.push((b, a.wrapping_sub(w)));
+        //         }
+        //         for (b, a) in even_more.into_iter() {
+        //             before_pixels.remove(b);
+        //             after_pixels.remove(a);
+        //             more.push((b, a));
+        //         }
+        //     }
+        //     more.sort();
+        //     more.dedup();
+        //     println!(
+        //         "    Found {} more connections with {} and {} pixels left to go...",
+        //         more.len(),
+        //         before_pixels.len(),
+        //         after_pixels.len()
+        //     );
+        //     for (b, a) in more.iter().copied() {
+        //         before_pixels.remove(b);
+        //         after_pixels.remove(a);
+        //     }
+        //     println!(
+        //         "We handled {} before and {} after",
+        //         last_before_len - before_pixels.len(),
+        //         last_after_len - after_pixels.len()
+        //     );
+        //     connections.extend(more.iter().copied());
+        //     todo = more;
+        // }
 
-        connections.sort();
-        connections.dedup();
-        println!(
-            "Found {} connections between {} and {} pixels for {} connections per pixel",
-            connections.len(),
-            before_positions.len(),
-            after_positions.len(),
-            connections.len() as f64 / before_positions.len() as f64
-        );
+        // connections.sort();
+        // connections.dedup();
+        // println!(
+        //     "Found {} connections between {} and {} pixels for {} connections per pixel",
+        //     connections.len(),
+        //     before_positions.len(),
+        //     after_positions.len(),
+        //     connections.len() as f64 / before_positions.len() as f64
+        // );
 
         ChunkTween {
             w,
@@ -679,4 +714,132 @@ impl Mul<Vec2> for Transform {
 
 fn rotate(cos: f32, sin: f32, v: Vec2) -> Vec2 {
     Vec2::new(v.x * cos - v.y * sin, v.y * cos + v.x * sin)
+}
+
+fn is_monotonic(connections: &[(usize, usize)]) -> bool {
+    count_monotonic(
+        connections
+            .iter()
+            .copied()
+            .chain(connections[0..1].iter().copied()),
+        connections[0].1,
+    ) == connections.len() + 1
+}
+
+#[test]
+fn test_is_monotonic() {
+    assert!(is_monotonic(&[(0, 1), (0, 2), (0, 4)]));
+    assert!(is_monotonic(&[(0, 1), (0, 2), (0, 4), (0, 0)]));
+    assert!(is_monotonic(&[(0, 1), (0, 2), (0, 3), (0, 0)]));
+    assert!(is_monotonic(&[(0, 3), (0, 4), (0, 1), (0, 2)]));
+    assert!(!is_monotonic(&[(0, 1), (0, 0), (0, 4)]));
+    assert!(!is_monotonic(&[(0, 1), (0, 2), (0, 3), (0, 1), (0, 0)]));
+}
+
+fn count_monotonic(mut connections: impl Iterator<Item = (usize, usize)>, first: usize) -> usize {
+    let mut prev = if let Some(prev) = connections.next() {
+        prev.1
+    } else {
+        return 0;
+    };
+    let mut have_wrapped = prev < first;
+    let mut count = 1;
+    for (_, next) in connections {
+        if have_wrapped {
+            if next < prev || next > first {
+                return count;
+            }
+        } else {
+            if next < prev {
+                if next > first {
+                    return count;
+                }
+                have_wrapped = true;
+            }
+        }
+        prev = next;
+        count += 1;
+    }
+    count
+}
+
+#[test]
+fn test_count_monotonic() {
+    assert_eq!(
+        3,
+        count_monotonic([(0, 1), (0, 0), (0, 1), (0, 2), (0, 3)].into_iter(), 1)
+    );
+    assert_eq!(
+        5,
+        count_monotonic([(0, 1), (0, 2), (0, 2), (0, 2), (0, 3)].into_iter(), 1)
+    );
+}
+
+fn make_monotonic(mut connections: Vec<(usize, usize)>) -> Vec<(usize, usize)> {
+    println!("\nConnections starts as {connections:?}");
+    let mut is_keeper = vec![false; connections.len()];
+    while !is_monotonic(&connections) {
+        let mut longest_run = 0..0;
+        for i in 0..connections.len() {
+            if !is_keeper[i] {
+                let run = count_monotonic(
+                    connections[i..]
+                        .iter()
+                        .copied()
+                        .chain(connections[0..i + 1].iter().copied()),
+                    connections[i].1,
+                );
+                println!("Run length from {i} is {run}");
+                if run > longest_run.len() {
+                    longest_run = i..i + run;
+                }
+            }
+        }
+        println!("Longest run is {longest_run:?} from {connections:?}");
+        if longest_run.len() < 2 {
+            // FIXME
+            break;
+        }
+        for i in longest_run.clone() {
+            is_keeper[i % connections.len()] = true;
+        }
+        // Now we need to eliminate any connections that have already been ruled out.
+        // how we do this will depend on whether or not we have wrapped around the
+        // end in our monotonic run.
+        let run_end_value = connections[longest_run.end % connections.len()].1;
+        let run_start_value = connections[longest_run.start].1;
+        let max_to_keep = std::cmp::min(run_end_value, run_start_value);
+        let min_to_keep = std::cmp::max(run_end_value, run_start_value);
+
+        let mut to_remove = vec![false; connections.len()];
+        for j in longest_run.end..longest_run.end + connections.len() {
+            let j = j % connections.len();
+            if is_keeper[j] {
+                break;
+            }
+            let v = connections[j].1;
+            if v > max_to_keep || v < min_to_keep {
+                to_remove[j] = true;
+            }
+        }
+        for (i, _) in to_remove.iter().copied().enumerate().filter(|(_, b)| *b) {
+            is_keeper.remove(i);
+            connections.remove(i);
+        }
+    }
+    println!("Connections should now be {connections:?}\n");
+    assert!(is_monotonic(&connections));
+    connections
+}
+#[test]
+fn test_make_monotonic() {
+    assert_eq!(vec![(0, 1), (0, 2)], make_monotonic(vec![(0, 1), (0, 2)]));
+    assert_eq!(
+        vec![(0, 1), (0, 2), (0, 3), (0, 0)],
+        make_monotonic(vec![(0, 1), (0, 2), (0, 3), (0, 0)])
+    );
+    assert_eq!(
+        vec![(0, 1), (0, 2), (0, 3), (0, 1)],
+        make_monotonic(vec![(0, 1), (0, 2), (0, 3), (0, 1), (0, 0)])
+    );
 }
