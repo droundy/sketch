@@ -83,22 +83,14 @@ impl ChunkTween {
             .map(|i| Vec2::new((i % w) as f32, (i / w) as f32))
             .collect::<Vec<_>>();
 
-        let (smaller, larger) = if before_outline.len() < after_outline.len() {
-            (&before_outline, &after_outline)
+        let (smaller_positions, larger_positions) = if before_outline.len() < after_outline.len() {
+            (before_positions, after_positions)
         } else {
-            (&after_outline, &before_outline)
+            (after_positions, before_positions)
         };
 
-        let smaller_positions = smaller
-            .iter()
-            .map(|i| transform * Vec2::new((i % w) as f32, (i / w) as f32))
-            .collect::<Vec<_>>();
-        let larger_positions = larger
-            .iter()
-            .map(|i| Vec2::new((i % w) as f32, (i / w) as f32))
-            .collect::<Vec<_>>();
-
-        let mut outline_connections = Vec::with_capacity(smaller.len());
+        let mut outline_connections = Vec::with_capacity(smaller_positions.len());
+        // We start by identifying the closest point on the outlines by distance.
         for (i, pos) in smaller_positions.iter().copied().enumerate() {
             let mut j = 0;
             let mut closest = larger_positions[j].distance_squared(pos);
@@ -108,63 +100,51 @@ impl ChunkTween {
                     closest = posj.distance_squared(pos);
                 }
             }
-            outline_connections.push((i, j));
-        }
-
-        let outline_connections = make_monotonic(outline_connections);
-
-        let mut i = 0;
-        let mut j = 0;
-        let mut closest = after_positions[j].distance_squared(before_positions[i]);
-        for jj in 0..after_outline.len() {
-            if after_positions[jj].distance_squared(before_positions[i]) < closest {
-                j = jj;
-                closest = after_positions[jj].distance_squared(before_positions[i]);
-            }
-        }
-        connections.push((before_outline[i], after_outline[j]));
-        let mut irev = i;
-        let mut jrev = j;
-
-        while connections.len() < after_outline.len() + before_outline.len() {
-            let inext = (i + 1) % before_outline.len();
-            let jnext = (j + 1) % after_outline.len();
-            let iprev = (irev + before_outline.len() - 1) % before_outline.len();
-            let jprev = (jrev + after_outline.len() - 1) % after_outline.len();
-
-            let mut best_d = 1e30;
-            let mut chosen_i = 0;
-            let mut chosen_j = 0;
-
-            for (ii, jj) in [(inext, j), (i, jnext), (inext, jnext)] {
-                let d = before_positions[ii].distance_squared(after_positions[jj]);
-                if d < best_d {
-                    best_d = d;
-                    chosen_i = ii;
-                    chosen_j = jj;
-                }
-            }
-            let mut moving_forward = true;
-            for (ii, jj) in [(iprev, jrev), (irev, jprev), (iprev, jprev)] {
-                let d = before_positions[ii].distance_squared(after_positions[jj]);
-                if d < best_d {
-                    moving_forward = false;
-                    best_d = d;
-                    chosen_i = ii;
-                    chosen_j = jj;
-                }
-            }
-            connections.push((before_outline[chosen_i], after_outline[chosen_j]));
-            if moving_forward {
-                i = chosen_i;
-                j = chosen_j;
+            if before_outline.len() < after_outline.len() {
+                outline_connections.push((i, j));
             } else {
-                irev = chosen_i;
-                jrev = chosen_j;
+                outline_connections.push((j, i));
             }
         }
-        connections.sort();
-        connections.dedup();
+        // We then drop all the connections that are out of order.
+        let outline_connections = make_monotonic(outline_connections);
+        println!("We have outline connections {}", outline_connections.len());
+        // Finally we interpolate the outline in between those closest connections, so the
+        // whole outline should continuously deform with no breaks.
+        let (mut i, mut j) = outline_connections.last().copied().unwrap();
+        for (mut b, mut a) in outline_connections {
+            if b < i {
+                b += before_outline.len();
+            }
+            if a < j {
+                a += after_outline.len();
+            }
+            let gap_b = b - i + 1;
+            let gap_a = a - j + 1;
+            let initial_i = i;
+            let initial_j = j;
+            connections.push((
+                before_outline[i % before_outline.len()],
+                after_outline[j % after_outline.len()],
+            ));
+            while i < b || j < a {
+                // println!("     ({i}, {j}) {}", connections.len());
+                connections.push((
+                    before_outline[i % before_outline.len()],
+                    after_outline[j % after_outline.len()],
+                ));
+                let ifrac = (i + 1 - initial_i) as f64 / gap_b as f64;
+                let jfrac = (j + 1 - initial_j) as f64 / gap_a as f64;
+                if ifrac < jfrac || j >= a {
+                    i += 1;
+                } else {
+                    j += 1;
+                }
+            }
+            i = i % before_outline.len();
+            j = j % after_outline.len();
+        }
+
         println!(
             "Outline gave {} connections between {} and {} pixels",
             connections.len(),
@@ -775,7 +755,6 @@ fn test_count_monotonic() {
 }
 
 fn make_monotonic(mut connections: Vec<(usize, usize)>) -> Vec<(usize, usize)> {
-    println!("\nConnections starts as {connections:?}");
     let mut is_keeper = vec![false; connections.len()];
     while !is_monotonic(&connections) {
         let mut longest_run = 0..0;
@@ -788,13 +767,11 @@ fn make_monotonic(mut connections: Vec<(usize, usize)>) -> Vec<(usize, usize)> {
                         .chain(connections[0..i + 1].iter().copied()),
                     connections[i].1,
                 );
-                println!("Run length from {i} is {run}");
                 if run > longest_run.len() {
                     longest_run = i..i + run;
                 }
             }
         }
-        println!("Longest run is {longest_run:?} from {connections:?}");
         if longest_run.len() < 2 {
             // FIXME
             break;
@@ -821,12 +798,17 @@ fn make_monotonic(mut connections: Vec<(usize, usize)>) -> Vec<(usize, usize)> {
                 to_remove[j] = true;
             }
         }
-        for (i, _) in to_remove.iter().copied().enumerate().filter(|(_, b)| *b) {
+        for (i, _) in to_remove
+            .iter()
+            .copied()
+            .enumerate()
+            .rev()
+            .filter(|(_, b)| *b)
+        {
             is_keeper.remove(i);
             connections.remove(i);
         }
     }
-    println!("Connections should now be {connections:?}\n");
     assert!(is_monotonic(&connections));
     connections
 }
