@@ -490,7 +490,7 @@ fn outline(w: usize, pixels: &mut SetUsize) -> Option<Vec<usize>> {
             } else if pixels.contains(next + w) {
                 next + w
             } else {
-                break;
+                last
             }
         } else if next == last + w {
             if pixels.contains(next + 1) {
@@ -500,7 +500,7 @@ fn outline(w: usize, pixels: &mut SetUsize) -> Option<Vec<usize>> {
             } else if pixels.contains(next.wrapping_sub(1)) {
                 next.wrapping_sub(1)
             } else {
-                break;
+                last
             }
         } else if next == last.wrapping_sub(1) {
             if pixels.contains(next + w) {
@@ -510,7 +510,7 @@ fn outline(w: usize, pixels: &mut SetUsize) -> Option<Vec<usize>> {
             } else if pixels.contains(next.wrapping_sub(w)) {
                 next.wrapping_sub(w)
             } else {
-                break;
+                last
             }
         } else if next == last.wrapping_sub(w) {
             if pixels.contains(next.wrapping_sub(1)) {
@@ -520,12 +520,11 @@ fn outline(w: usize, pixels: &mut SetUsize) -> Option<Vec<usize>> {
             } else if pixels.contains(next + 1) {
                 next + 1
             } else {
-                break;
+                last
             }
         } else {
             unreachable!()
         };
-        pixels.remove(n);
         out.push(n);
         last = next;
         next = n;
