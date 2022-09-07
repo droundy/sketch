@@ -846,6 +846,7 @@ async fn main() {
                 needs_save = true;
                 drawing.handle_modified_bitmap(&mut frame_images, &mut frame_textures);
                 old_pos = None;
+                moving_chunk = MovingChunk::from_mask(width, SetUsize::new());
             }
         } else {
             old_pos = None;
