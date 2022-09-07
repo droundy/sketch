@@ -115,13 +115,15 @@ impl Drawing {
     ) {
         let idx =
             old_position.x.round() as usize + old_position.y.round() as usize * self.width as usize;
-        if !moving_chunk.0.contains(idx) {
+        if moving_chunk.0.is_empty() {
             moving_chunk.0 =
                 self.layers[self.current].get_filled_chunk(self.time, &SetUsize::from_iter([idx]));
             moving_chunk.1 = Vec::with_capacity(self.layers.len());
             for l in self.layers.iter() {
                 moving_chunk.1.push(l.get_chunk(self.time, &moving_chunk.0));
             }
+        } else if !moving_chunk.0.contains(idx) {
+            return;
         }
         let offset = new_position - old_position;
         let offset = offset.x.round() as isize + offset.y.round() as isize * self.width as isize;
@@ -848,6 +850,7 @@ async fn main() {
             }
         } else {
             old_pos = None;
+            moving_chunk.0 = SetUsize::new();
         }
 
         next_frame().await
