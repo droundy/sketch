@@ -299,14 +299,14 @@ impl Layer {
         }
     }
 
-    pub fn erase_pixels(&mut self, time: f32, pixels: SetUsize) {
+    pub fn erase_pixels(&mut self, time: f32, pixels: impl IntoIterator<Item = usize>) {
         let i = self.closest_frame(time);
         for p in pixels {
             self.keyframes[i].pixels.remove(p);
         }
         self.compute_fill(i);
     }
-    pub fn add_pixels(&mut self, time: f32, pixels: SetUsize) {
+    pub fn add_pixels(&mut self, time: f32, pixels: impl IntoIterator<Item = usize>) {
         let i = self.closest_frame(time);
         self.keyframes[i].pixels.extend(pixels);
         self.compute_fill(i);

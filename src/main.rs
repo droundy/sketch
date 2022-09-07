@@ -107,23 +107,41 @@ impl Drawing {
     fn move_pixels(&mut self, displacement: Vec2) {
         self.layers[self.current].move_pixels(self.time, displacement);
     }
-    fn move_chunk(&mut self, old_position: Vec2, new_position: Vec2) {
+    fn move_chunk(
+        &mut self,
+        old_position: Vec2,
+        new_position: Vec2,
+        moving_chunk: &mut (SetUsize, Vec<SetUsize>),
+    ) {
         let idx =
             old_position.x.round() as usize + old_position.y.round() as usize * self.width as usize;
-        let chunk =
-            self.layers[self.current].get_filled_chunk(self.time, &SetUsize::from_iter([idx]));
+        if !moving_chunk.0.contains(idx) {
+            moving_chunk.0 =
+                self.layers[self.current].get_filled_chunk(self.time, &SetUsize::from_iter([idx]));
+            moving_chunk.1 = Vec::with_capacity(self.layers.len());
+            for l in self.layers.iter() {
+                moving_chunk.1.push(l.get_chunk(self.time, &moving_chunk.0));
+            }
+        }
         let offset = new_position - old_position;
         let offset = offset.x.round() as isize + offset.y.round() as isize * self.width as isize;
 
-        for l in self.layers[self.current..].iter_mut() {
-            let old_chunk = l.get_chunk(self.time, &chunk);
-            let new_chunk = old_chunk
+        for (l, chunk) in self.layers[self.current..]
+            .iter_mut()
+            .zip(moving_chunk.1[self.current..].iter_mut())
+        {
+            l.erase_pixels(self.time, chunk.iter());
+            *chunk = chunk
                 .iter()
                 .map(|i| i.wrapping_add(offset as usize))
                 .collect();
-            l.erase_pixels(self.time, old_chunk);
-            l.add_pixels(self.time, new_chunk);
+            l.add_pixels(self.time, chunk.iter());
         }
+        moving_chunk.0 = moving_chunk
+            .0
+            .iter()
+            .map(|p| p.wrapping_add(offset as usize))
+            .collect();
     }
     pub fn frame_selector(
         &mut self,
@@ -662,6 +680,7 @@ async fn main() {
     let height = drawing.height as usize;
     let mut started = Instant::now();
     let mut needs_save = false;
+    let mut moving_chunk = (SetUsize::new(), Vec::new());
     loop {
         // clear_background(WHITE);
         if is_key_pressed(KeyCode::Escape) {
@@ -750,7 +769,7 @@ async fn main() {
                     if drawing.tool == Tool::Move {
                         drawing.move_pixels(pos - old);
                     } else if drawing.tool == Tool::MoveChunk {
-                        drawing.move_chunk(old, pos);
+                        drawing.move_chunk(old, pos, &mut moving_chunk);
                     }
                     let parallel = (old - pos).normalize();
                     let orthog = Vec2::new(parallel.y, -parallel.x);
