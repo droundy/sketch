@@ -311,6 +311,66 @@ impl Layer {
         self.keyframes[i].pixels.extend(pixels);
         self.compute_fill(i);
     }
+    pub fn get_chunk(&self, time: f32, selected: &SetUsize) -> SetUsize {
+        let w = self.width as usize;
+        let i = self.closest_frame(time);
+        let mut pixels = self.keyframes[i].pixels.clone();
+        let mut todo: Vec<usize> = selected.iter().filter(|&p| pixels.remove(p)).collect();
+        let mut out = SetUsize::new();
+
+        while let Some(p) = todo.pop() {
+            out.insert(p);
+            if p > 0 && pixels.contains(p - 1) {
+                todo.push(p - 1);
+                pixels.remove(p - 1);
+            }
+            if pixels.contains(p + 1) {
+                todo.push(p + 1);
+                pixels.remove(p + 1);
+            }
+            if p >= w && pixels.contains(p - w) {
+                todo.push(p - w);
+                pixels.remove(p - w);
+            }
+            if pixels.contains(p + w) {
+                todo.push(p + w);
+                pixels.remove(p + w);
+            }
+        }
+        out
+    }
+    pub fn get_filled_chunk(&self, time: f32, selected: &SetUsize) -> SetUsize {
+        let w = self.width as usize;
+        let i = self.closest_frame(time);
+        let mut pixels = self.keyframes[i].pixels.clone();
+        pixels.extend(self.keyframes[i].fill_pixels.iter());
+        let mut todo: Vec<usize> = selected.iter().collect();
+        let mut out = SetUsize::new();
+        for p in todo.iter().copied() {
+            pixels.remove(p);
+        }
+
+        while let Some(p) = todo.pop() {
+            out.insert(p);
+            if p > 0 && pixels.contains(p - 1) {
+                todo.push(p - 1);
+                pixels.remove(p - 1);
+            }
+            if pixels.contains(p + 1) {
+                todo.push(p + 1);
+                pixels.remove(p + 1);
+            }
+            if p >= w && pixels.contains(p - w) {
+                todo.push(p - w);
+                pixels.remove(p - w);
+            }
+            if pixels.contains(p + w) {
+                todo.push(p + w);
+                pixels.remove(p + w);
+            }
+        }
+        out
+    }
     pub fn move_pixels(&mut self, time: f32, displacement: Vec2) {
         let i = self.closest_frame(time);
         let didx =

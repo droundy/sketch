@@ -107,6 +107,24 @@ impl Drawing {
     fn move_pixels(&mut self, displacement: Vec2) {
         self.layers[self.current].move_pixels(self.time, displacement);
     }
+    fn move_chunk(&mut self, old_position: Vec2, new_position: Vec2) {
+        let idx =
+            old_position.x.round() as usize + old_position.y.round() as usize * self.width as usize;
+        let chunk =
+            self.layers[self.current].get_filled_chunk(self.time, &SetUsize::from_iter([idx]));
+        let offset = new_position - old_position;
+        let offset = offset.x.round() as isize + offset.y.round() as isize * self.width as isize;
+
+        for l in self.layers[self.current..].iter_mut() {
+            let old_chunk = l.get_chunk(self.time, &chunk);
+            let new_chunk = old_chunk
+                .iter()
+                .map(|i| i.wrapping_add(offset as usize))
+                .collect();
+            l.erase_pixels(self.time, old_chunk);
+            l.add_pixels(self.time, new_chunk);
+        }
+    }
     pub fn frame_selector(
         &mut self,
         images: &mut Vec<Image>,
@@ -447,6 +465,48 @@ impl Drawing {
             Vec2::new(WIDTH * 0.4, y + 3.7 * HEIGHT),
             WHITE,
         );
+        outline(y + 4.0 * HEIGHT, self.tool == Tool::MoveChunk);
+        draw_line(
+            WIDTH * 0.5,
+            y + 4.2 * HEIGHT,
+            WIDTH * 0.5,
+            y + 4.8 * HEIGHT,
+            2.0,
+            WHITE,
+        );
+        draw_line(
+            WIDTH * 0.2,
+            y + 4.5 * HEIGHT,
+            WIDTH * 0.8,
+            y + 4.5 * HEIGHT,
+            2.0,
+            WHITE,
+        );
+        draw_triangle(
+            Vec2::new(WIDTH * 0.2, y + 4.5 * HEIGHT),
+            Vec2::new(WIDTH * 0.3, y + 4.4 * HEIGHT),
+            Vec2::new(WIDTH * 0.3, y + 4.6 * HEIGHT),
+            WHITE,
+        );
+        draw_triangle(
+            Vec2::new(WIDTH * 0.8, y + 4.5 * HEIGHT),
+            Vec2::new(WIDTH * 0.7, y + 4.4 * HEIGHT),
+            Vec2::new(WIDTH * 0.7, y + 4.6 * HEIGHT),
+            WHITE,
+        );
+        draw_triangle(
+            Vec2::new(WIDTH * 0.5, y + 4.2 * HEIGHT),
+            Vec2::new(WIDTH * 0.6, y + 4.3 * HEIGHT),
+            Vec2::new(WIDTH * 0.4, y + 4.3 * HEIGHT),
+            WHITE,
+        );
+        draw_triangle(
+            Vec2::new(WIDTH * 0.5, y + 4.8 * HEIGHT),
+            Vec2::new(WIDTH * 0.6, y + 4.7 * HEIGHT),
+            Vec2::new(WIDTH * 0.4, y + 4.7 * HEIGHT),
+            WHITE,
+        );
+        draw_circle_lines(WIDTH * 0.5, HEIGHT * 4.5, 0.4 * HEIGHT, 2.0, WHITE);
         let (x, y) = mouse_position();
         if let Some(original_layer) = self.am_dragging_layer {
             if is_mouse_button_released(MouseButton::Left) {
@@ -506,6 +566,8 @@ impl Drawing {
                     self.tool = Tool::Eraser;
                 } else if y == 3 {
                     self.tool = Tool::Move;
+                } else if y == 4 {
+                    self.tool = Tool::MoveChunk;
                 } else if y == bottom_layer_index - self.layers.len() {
                     self.layers.push(Layer::new(self.time));
                     self.current = self.layers.len() - 1;
@@ -539,6 +601,7 @@ enum Tool {
     BigPen,
     LittlePen,
     Move,
+    MoveChunk,
 }
 
 #[derive(Clone, Deserialize, Serialize)]
@@ -680,11 +743,14 @@ async fn main() {
                     Tool::BigPen => 10.0,
                     Tool::Eraser => 20.0,
                     Tool::Move => 0.0,
+                    Tool::MoveChunk => 0.0,
                 };
                 let mut drawn = SetUsize::new();
                 if let Some(old) = old_pos {
                     if drawing.tool == Tool::Move {
                         drawing.move_pixels(pos - old);
+                    } else if drawing.tool == Tool::MoveChunk {
+                        drawing.move_chunk(old, pos);
                     }
                     let parallel = (old - pos).normalize();
                     let orthog = Vec2::new(parallel.y, -parallel.x);
