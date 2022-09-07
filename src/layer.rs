@@ -315,11 +315,11 @@ impl Layer {
         self.keyframes[i].pixels.extend(pixels);
         self.compute_fill(i);
     }
-    pub fn get_chunk(&self, time: f32, selected: &SetUsize) -> SetUsize {
+    pub fn get_chunk(&self, time: f32, selected: impl Iterator<Item = usize>) -> SetUsize {
         let w = self.width as usize;
         let i = self.closest_frame(time);
         let mut pixels = self.keyframes[i].pixels.clone();
-        let mut todo: Vec<usize> = selected.iter().filter(|&p| pixels.remove(p)).collect();
+        let mut todo: Vec<usize> = selected.filter(|&p| pixels.remove(p)).collect();
         let mut out = SetUsize::new();
 
         while let Some(p) = todo.pop() {
