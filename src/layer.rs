@@ -279,6 +279,10 @@ impl Layer {
         }
         (below, above)
     }
+    pub fn closest_points(&self, time: f32) -> &SetUsize {
+        let i = self.closest_frame(time);
+        &self.keyframes[i].pixels
+    }
     fn closest_frame(&self, time: f32) -> usize {
         let mut closest = 2.0;
         for f in self.keyframes.iter() {

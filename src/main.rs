@@ -125,7 +125,24 @@ impl Drawing {
         }
         let offset = new_position - old_position;
         let offset = offset.x.round() as isize + offset.y.round() as isize * self.width as isize;
+        let new_mask: SetUsize = moving_chunk
+            .0
+            .iter()
+            .map(|p| p.wrapping_add(offset as usize))
+            .collect();
 
+        self.layers[self.current].erase_pixels(self.time, moving_chunk.1[self.current].iter());
+        let curr = self.layers[self.current].closest_points(self.time);
+        let w = self.width as usize;
+        if new_mask.iter().any(|p| {
+            curr.contains(p + 1)
+                || curr.contains(p + w)
+                || curr.contains(p.wrapping_sub(1))
+                || curr.contains(p.wrapping_sub(w))
+        }) {
+            self.layers[self.current].add_pixels(self.time, moving_chunk.1[self.current].iter());
+            return;
+        }
         for (l, chunk) in self.layers[self.current..]
             .iter_mut()
             .zip(moving_chunk.1[self.current..].iter_mut())
@@ -137,11 +154,7 @@ impl Drawing {
                 .collect();
             l.add_pixels(self.time, chunk.iter());
         }
-        moving_chunk.0 = moving_chunk
-            .0
-            .iter()
-            .map(|p| p.wrapping_add(offset as usize))
-            .collect();
+        moving_chunk.0 = new_mask;
     }
     pub fn frame_selector(
         &mut self,
