@@ -73,6 +73,11 @@ impl ChunkTween {
             before_pixels.len(),
             before_outline.len()
         );
+        println!(
+            "Out of {} pixels after, {} participate in the outline.",
+            after_pixels.len(),
+            after_outline.len()
+        );
 
         let before_positions = before_outline
             .iter()
@@ -100,15 +105,16 @@ impl ChunkTween {
                     closest = posj.distance_squared(pos);
                 }
             }
-            if before_outline.len() < after_outline.len() {
-                outline_connections.push((i, j));
-            } else {
-                outline_connections.push((j, i));
-            }
+            outline_connections.push((i, j));
         }
         // We then drop all the connections that are out of order.
         let outline_connections = make_monotonic(outline_connections);
-        println!("We have outline connections {}", outline_connections.len());
+        // Now reorder the indexes if needed
+        let outline_connections = if before_outline.len() < after_outline.len() {
+            outline_connections
+        } else {
+            outline_connections.iter().map(|&(i, j)| (j, i)).collect()
+        };
         // Finally we interpolate the outline in between those closest connections, so the
         // whole outline should continuously deform with no breaks.
         let (mut i, mut j) = outline_connections.last().copied().unwrap();
@@ -152,95 +158,95 @@ impl ChunkTween {
             after_outline.len()
         );
 
-        // let mut todo = connections.clone();
+        let mut todo = connections.clone();
 
-        // for (b, a) in todo.iter().copied() {
-        //     before_pixels.remove(b);
-        //     after_pixels.remove(a);
-        // }
-        // // Apparently this "flood fill" algorithm can sometimes miss a few pixels, so
-        // // rather than keeping going until all pixels are connected, we quit when we
-        // // stop making progress.
-        // let mut last_before_len = before_pixels.len() + 1;
-        // let mut last_after_len = after_pixels.len() + 1;
-        // while before_pixels.len() != last_before_len && after_pixels.len() != last_after_len {
-        //     last_before_len = before_pixels.len();
-        //     last_after_len = after_pixels.len();
-        //     let mut more = Vec::new();
-        //     for (b, a) in todo.drain(..) {
-        //         let mut even_more = Vec::new();
-        //         if before_pixels.contains(b + 1) {
-        //             if after_pixels.contains(a + 1) {
-        //                 even_more.push((b + 1, a + 1));
-        //             } else {
-        //                 even_more.push((b + 1, a));
-        //             }
-        //         } else if after_pixels.contains(a + 1) {
-        //             even_more.push((b, a + 1));
-        //         }
-        //         if before_pixels.contains(b + w) {
-        //             if after_pixels.contains(a + w) {
-        //                 even_more.push((b + w, a + w));
-        //             } else {
-        //                 even_more.push((b + w, a));
-        //             }
-        //         } else if after_pixels.contains(a + w) {
-        //             even_more.push((b, a + w));
-        //         }
-        //         if before_pixels.contains(b.wrapping_sub(1)) {
-        //             if after_pixels.contains(a.wrapping_sub(1)) {
-        //                 even_more.push((b.wrapping_sub(1), a.wrapping_sub(1)));
-        //             } else {
-        //                 even_more.push((b.wrapping_sub(1), a));
-        //             }
-        //         } else if after_pixels.contains(a.wrapping_sub(1)) {
-        //             even_more.push((b, a.wrapping_sub(1)));
-        //         }
-        //         if before_pixels.contains(b.wrapping_sub(w)) {
-        //             if after_pixels.contains(a.wrapping_sub(w)) {
-        //                 even_more.push((b.wrapping_sub(w), a.wrapping_sub(w)));
-        //             } else {
-        //                 even_more.push((b.wrapping_sub(w), a));
-        //             }
-        //         } else if after_pixels.contains(a.wrapping_sub(w)) {
-        //             even_more.push((b, a.wrapping_sub(w)));
-        //         }
-        //         for (b, a) in even_more.into_iter() {
-        //             before_pixels.remove(b);
-        //             after_pixels.remove(a);
-        //             more.push((b, a));
-        //         }
-        //     }
-        //     more.sort();
-        //     more.dedup();
-        //     println!(
-        //         "    Found {} more connections with {} and {} pixels left to go...",
-        //         more.len(),
-        //         before_pixels.len(),
-        //         after_pixels.len()
-        //     );
-        //     for (b, a) in more.iter().copied() {
-        //         before_pixels.remove(b);
-        //         after_pixels.remove(a);
-        //     }
-        //     println!(
-        //         "We handled {} before and {} after",
-        //         last_before_len - before_pixels.len(),
-        //         last_after_len - after_pixels.len()
-        //     );
-        //     connections.extend(more.iter().copied());
-        //     todo = more;
-        // }
+        for (b, a) in todo.iter().copied() {
+            before_pixels.remove(b);
+            after_pixels.remove(a);
+        }
+        // Apparently this "flood fill" algorithm can sometimes miss a few pixels, so
+        // rather than keeping going until all pixels are connected, we quit when we
+        // stop making progress.
+        let mut last_before_len = before_pixels.len() + 1;
+        let mut last_after_len = after_pixels.len() + 1;
+        while before_pixels.len() != last_before_len && after_pixels.len() != last_after_len {
+            last_before_len = before_pixels.len();
+            last_after_len = after_pixels.len();
+            let mut more = Vec::new();
+            for (b, a) in todo.drain(..) {
+                let mut even_more = Vec::new();
+                if before_pixels.contains(b + 1) {
+                    if after_pixels.contains(a + 1) {
+                        even_more.push((b + 1, a + 1));
+                    } else {
+                        even_more.push((b + 1, a));
+                    }
+                } else if after_pixels.contains(a + 1) {
+                    even_more.push((b, a + 1));
+                }
+                if before_pixels.contains(b + w) {
+                    if after_pixels.contains(a + w) {
+                        even_more.push((b + w, a + w));
+                    } else {
+                        even_more.push((b + w, a));
+                    }
+                } else if after_pixels.contains(a + w) {
+                    even_more.push((b, a + w));
+                }
+                if before_pixels.contains(b.wrapping_sub(1)) {
+                    if after_pixels.contains(a.wrapping_sub(1)) {
+                        even_more.push((b.wrapping_sub(1), a.wrapping_sub(1)));
+                    } else {
+                        even_more.push((b.wrapping_sub(1), a));
+                    }
+                } else if after_pixels.contains(a.wrapping_sub(1)) {
+                    even_more.push((b, a.wrapping_sub(1)));
+                }
+                if before_pixels.contains(b.wrapping_sub(w)) {
+                    if after_pixels.contains(a.wrapping_sub(w)) {
+                        even_more.push((b.wrapping_sub(w), a.wrapping_sub(w)));
+                    } else {
+                        even_more.push((b.wrapping_sub(w), a));
+                    }
+                } else if after_pixels.contains(a.wrapping_sub(w)) {
+                    even_more.push((b, a.wrapping_sub(w)));
+                }
+                for (b, a) in even_more.into_iter() {
+                    before_pixels.remove(b);
+                    after_pixels.remove(a);
+                    more.push((b, a));
+                }
+            }
+            more.sort();
+            more.dedup();
+            println!(
+                "    Found {} more connections with {} and {} pixels left to go...",
+                more.len(),
+                before_pixels.len(),
+                after_pixels.len()
+            );
+            for (b, a) in more.iter().copied() {
+                before_pixels.remove(b);
+                after_pixels.remove(a);
+            }
+            println!(
+                "We handled {} before and {} after",
+                last_before_len - before_pixels.len(),
+                last_after_len - after_pixels.len()
+            );
+            connections.extend(more.iter().copied());
+            todo = more;
+        }
 
-        // connections.sort();
-        // connections.dedup();
-        // println!(
-        //     "Found {} connections between {} and {} pixels for {} connections per pixel",
-        //     connections.len(),
-        //     before_positions.len(),
-        //     after_positions.len(),
-        //     connections.len() as f64 / before_positions.len() as f64
-        // );
+        connections.sort();
+        connections.dedup();
+        println!(
+            "Found {} connections between {} and {} pixels for {} connections per pixel",
+            connections.len(),
+            before_outline.len(),
+            after_outline.len(),
+            connections.len() as f64 / before_outline.len() as f64
+        );
 
         ChunkTween {
             w,
@@ -812,6 +818,7 @@ fn make_monotonic(mut connections: Vec<(usize, usize)>) -> Vec<(usize, usize)> {
     assert!(is_monotonic(&connections));
     connections
 }
+
 #[test]
 fn test_make_monotonic() {
     assert_eq!(vec![(0, 1), (0, 2)], make_monotonic(vec![(0, 1), (0, 2)]));
