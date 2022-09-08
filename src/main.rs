@@ -11,7 +11,7 @@ use macroquad::prelude::{
     mouse_position, next_frame, screen_height, screen_width, Color, Conf, KeyCode, MouseButton,
     Vec2, BLACK, DARKGRAY, GRAY, WHITE,
 };
-use macroquad::shapes::{draw_poly, draw_triangle};
+use macroquad::shapes::{draw_poly, draw_triangle, draw_triangle_lines};
 use macroquad::texture::{draw_texture_ex, DrawTextureParams, Image, Texture2D};
 use macroquad::ui::root_ui;
 
@@ -65,6 +65,8 @@ fn color_selector_color(fx: f32, fy: f32) -> Option<[u8; 4]> {
         let r = x * (1.0 - (1.0 - x).powi(2));
         let rgb = rgb.map(|c| (r * c * 255.0) as u8);
         Some([rgb[0], rgb[1], rgb[2], 255])
+    } else if fx > 0.0 && fy > 0.0 {
+        Some([0, 0, 0, 0])
     } else {
         None
     }
@@ -364,25 +366,24 @@ impl Drawing {
         }
 
         static AM_DRAGGING: AtomicBool = AtomicBool::new(false);
-        if is_mouse_button_down(MouseButton::Left) {
-            let pos = mouse_position();
-            let fx = (pos.0 + w - swidth) / w;
-            let fy = (pos.1 + h - sheight) / h;
-            if let Some(c) = color_selector_color(fx, fy) {
+        let pos = mouse_position();
+        let fx = (pos.0 + w - swidth) / w;
+        let fy = (pos.1 + h - sheight) / h;
+        if let Some(c) = color_selector_color(fx, fy) {
+            if is_mouse_button_down(MouseButton::Left) {
                 if self.am_selecting_fill {
                     self.layers[self.current].fill_color = c;
                 } else {
                     self.layers[self.current].color = c;
                 }
                 AM_DRAGGING.store(true, std::sync::atomic::Ordering::Relaxed);
-                return true;
-            } else if AM_DRAGGING.load(std::sync::atomic::Ordering::Relaxed) {
-                return true;
+            } else {
+                AM_DRAGGING.store(false, std::sync::atomic::Ordering::Relaxed);
             }
+            true
         } else {
-            AM_DRAGGING.store(false, std::sync::atomic::Ordering::Relaxed);
+            AM_DRAGGING.load(std::sync::atomic::Ordering::Relaxed)
         }
-        false
     }
     fn layer_selector(&mut self) -> bool {
         const WIDTH: f32 = 80.0;
@@ -451,94 +452,15 @@ impl Drawing {
         // Now draw the tool buttons.
         let y = 0.0;
         outline(y, self.tool == Tool::BigPen);
-        draw_circle(WIDTH * 0.5, y + HEIGHT * 0.5, 10.0, WHITE);
+        self.draw_tool(Tool::BigPen, WIDTH * 0.5, y + HEIGHT * 0.5, true);
         outline(y + HEIGHT, self.tool == Tool::LittlePen);
-        draw_circle(WIDTH * 0.5, y + HEIGHT * 1.5, 2.0, WHITE);
+        self.draw_tool(Tool::LittlePen, WIDTH * 0.5, y + HEIGHT * 1.5, true);
         outline(y + 2.0 * HEIGHT, self.tool == Tool::Eraser);
-        draw_circle_lines(WIDTH * 0.5, y + HEIGHT * 2.5, 10.0, 2.0, WHITE);
+        self.draw_tool(Tool::Eraser, WIDTH * 0.5, y + HEIGHT * 2.5, true);
         outline(y + 3.0 * HEIGHT, self.tool == Tool::Move);
-        draw_line(
-            WIDTH * 0.5,
-            y + 3.2 * HEIGHT,
-            WIDTH * 0.5,
-            y + 3.8 * HEIGHT,
-            2.0,
-            WHITE,
-        );
-        draw_line(
-            WIDTH * 0.2,
-            y + 3.5 * HEIGHT,
-            WIDTH * 0.8,
-            y + 3.5 * HEIGHT,
-            2.0,
-            WHITE,
-        );
-        draw_triangle(
-            Vec2::new(WIDTH * 0.2, y + 3.5 * HEIGHT),
-            Vec2::new(WIDTH * 0.3, y + 3.4 * HEIGHT),
-            Vec2::new(WIDTH * 0.3, y + 3.6 * HEIGHT),
-            WHITE,
-        );
-        draw_triangle(
-            Vec2::new(WIDTH * 0.8, y + 3.5 * HEIGHT),
-            Vec2::new(WIDTH * 0.7, y + 3.4 * HEIGHT),
-            Vec2::new(WIDTH * 0.7, y + 3.6 * HEIGHT),
-            WHITE,
-        );
-        draw_triangle(
-            Vec2::new(WIDTH * 0.5, y + 3.2 * HEIGHT),
-            Vec2::new(WIDTH * 0.6, y + 3.3 * HEIGHT),
-            Vec2::new(WIDTH * 0.4, y + 3.3 * HEIGHT),
-            WHITE,
-        );
-        draw_triangle(
-            Vec2::new(WIDTH * 0.5, y + 3.8 * HEIGHT),
-            Vec2::new(WIDTH * 0.6, y + 3.7 * HEIGHT),
-            Vec2::new(WIDTH * 0.4, y + 3.7 * HEIGHT),
-            WHITE,
-        );
+        self.draw_tool(Tool::Move, WIDTH * 0.5, y + HEIGHT * 3.5, true);
         outline(y + 4.0 * HEIGHT, self.tool == Tool::MoveChunk);
-        draw_line(
-            WIDTH * 0.5,
-            y + 4.2 * HEIGHT,
-            WIDTH * 0.5,
-            y + 4.8 * HEIGHT,
-            2.0,
-            WHITE,
-        );
-        draw_line(
-            WIDTH * 0.2,
-            y + 4.5 * HEIGHT,
-            WIDTH * 0.8,
-            y + 4.5 * HEIGHT,
-            2.0,
-            WHITE,
-        );
-        draw_triangle(
-            Vec2::new(WIDTH * 0.2, y + 4.5 * HEIGHT),
-            Vec2::new(WIDTH * 0.3, y + 4.4 * HEIGHT),
-            Vec2::new(WIDTH * 0.3, y + 4.6 * HEIGHT),
-            WHITE,
-        );
-        draw_triangle(
-            Vec2::new(WIDTH * 0.8, y + 4.5 * HEIGHT),
-            Vec2::new(WIDTH * 0.7, y + 4.4 * HEIGHT),
-            Vec2::new(WIDTH * 0.7, y + 4.6 * HEIGHT),
-            WHITE,
-        );
-        draw_triangle(
-            Vec2::new(WIDTH * 0.5, y + 4.2 * HEIGHT),
-            Vec2::new(WIDTH * 0.6, y + 4.3 * HEIGHT),
-            Vec2::new(WIDTH * 0.4, y + 4.3 * HEIGHT),
-            WHITE,
-        );
-        draw_triangle(
-            Vec2::new(WIDTH * 0.5, y + 4.8 * HEIGHT),
-            Vec2::new(WIDTH * 0.6, y + 4.7 * HEIGHT),
-            Vec2::new(WIDTH * 0.4, y + 4.7 * HEIGHT),
-            WHITE,
-        );
-        draw_circle_lines(WIDTH * 0.5, HEIGHT * 4.5, 0.4 * HEIGHT, 2.0, WHITE);
+        self.draw_tool(Tool::MoveChunk, WIDTH * 0.5, y + HEIGHT * 4.5, true);
         let (x, y) = mouse_position();
         if let Some(original_layer) = self.am_dragging_layer {
             if is_mouse_button_released(MouseButton::Left) {
@@ -625,6 +547,67 @@ impl Drawing {
         }
         x < WIDTH
     }
+
+    fn show_cursor(&self) {
+        let (x, y) = mouse_position();
+        self.draw_tool(self.tool, x, y, false);
+    }
+
+    fn draw_tool(&self, tool: Tool, x: f32, y: f32, filled: bool) {
+        let color = self.layers[self.current].color;
+        let contrast = if color[0] as u64 + color[1] as u64 + color[2] as u64 > 300 {
+            BLACK
+        } else {
+            WHITE
+        };
+        const RADIUS: f32 = Tool::Eraser.radius() * 0.7 + Tool::BigPen.radius() * 0.3;
+        let color = Color::from_rgba(color[0], color[1], color[2], color[3]);
+        if tool == Tool::Move || tool == Tool::MoveChunk {
+            draw_line(x, y - RADIUS, x, y + RADIUS, 4.0, BLACK);
+            draw_line(x - RADIUS, y, x + RADIUS, y, 4.0, BLACK);
+            draw_line(x, y - RADIUS, x, y + RADIUS, 2.0, WHITE);
+            draw_line(x - RADIUS, y, x + RADIUS, y, 2.0, WHITE);
+            let c = Vec2::new(x, y);
+            for point in [
+                Vec2::new(RADIUS, 0.0),
+                Vec2::new(-RADIUS, 0.0),
+                Vec2::new(0.0, -RADIUS),
+                Vec2::new(0.0, RADIUS),
+            ] {
+                let orth = Vec2::new(point.y, -point.x);
+                draw_triangle_lines(
+                    c + point,
+                    c + point * 0.6 + orth * 0.3,
+                    c + point * 0.6 - orth * 0.3,
+                    3.0,
+                    BLACK,
+                );
+                draw_triangle(
+                    c + point,
+                    c + point * 0.6 + orth * 0.3,
+                    c + point * 0.6 - orth * 0.3,
+                    WHITE,
+                );
+            }
+            if tool == Tool::MoveChunk {
+                draw_circle_lines(x, y, RADIUS * 1.1, 2.0, color);
+                draw_circle_lines(x, y, RADIUS * 1.1 + 1.0, 1.0, contrast);
+            }
+        } else if tool == Tool::Eraser {
+            draw_circle_lines(x, y, tool.radius(), 1.0, BLACK);
+            draw_circle_lines(x, y, tool.radius() + 1.0, 1.0, WHITE);
+        } else if tool == Tool::LittlePen {
+            draw_circle(x, y, tool.radius(), color);
+            draw_circle_lines(x, y, tool.radius() + 1.0, 1.0, contrast);
+        } else {
+            if filled {
+                draw_circle(x, y, tool.radius(), color);
+            } else {
+                draw_circle_lines(x, y, tool.radius() - 2.0, 3.0, color);
+            }
+            draw_circle_lines(x, y, tool.radius() + 1.0, 1.0, contrast);
+        }
+    }
 }
 
 #[derive(PartialEq, Eq, Debug, Copy, Clone, Deserialize, Serialize)]
@@ -634,6 +617,18 @@ enum Tool {
     LittlePen,
     Move,
     MoveChunk,
+}
+
+impl Tool {
+    const fn radius(&self) -> f32 {
+        match self {
+            Tool::LittlePen => 2.0,
+            Tool::BigPen => 10.0,
+            Tool::Eraser => 20.0,
+            Tool::Move => 0.0,
+            Tool::MoveChunk => 0.0,
+        }
+    }
 }
 
 #[derive(Clone, Deserialize, Serialize)]
@@ -673,6 +668,7 @@ async fn main() {
         },
     );
     let texture = Texture2D::from_image(&bitmap);
+    macroquad::input::show_mouse(false);
 
     let mut old_pos: Option<Vec2> = None;
     let mut frame_images = Vec::new();
@@ -771,13 +767,7 @@ async fn main() {
             if is_mouse_button_down(MouseButton::Left) {
                 let pos = mouse_position();
                 let pos = Vec2::new(pos.0, pos.1);
-                let radius = match drawing.tool {
-                    Tool::LittlePen => 2.0,
-                    Tool::BigPen => 10.0,
-                    Tool::Eraser => 20.0,
-                    Tool::Move => 0.0,
-                    Tool::MoveChunk => 0.0,
-                };
+                let radius = drawing.tool.radius();
                 let mut drawn = SetUsize::new();
                 if let Some(old) = old_pos {
                     if drawing.tool == Tool::Move {
@@ -848,9 +838,47 @@ async fn main() {
                 old_pos = None;
                 moving_chunk = MovingChunk::from_mask(width, SetUsize::new());
             }
+            drawing.show_cursor();
         } else {
             old_pos = None;
             moving_chunk = MovingChunk::from_mask(width, SetUsize::new());
+
+            let (x, y) = mouse_position();
+            let m = Vec2::new(x, y);
+            const RADIUS: f32 = 30.0;
+            let end = Vec2::new(
+                RADIUS * 0.65 / 2.0_f32.sqrt(),
+                RADIUS * 0.65 * (1.0 + 1.0 / 2.0_f32.sqrt()),
+            );
+            draw_line(
+                m.x + 0.5 * end.x,
+                m.y + 0.5 * end.y,
+                m.x + 1.05 * end.x,
+                m.y + 1.05 * end.y,
+                8.0,
+                BLACK,
+            );
+            draw_triangle(
+                m,
+                m + Vec2::new(0.0, RADIUS),
+                m + Vec2::new(RADIUS / 2.0_f32.sqrt(), RADIUS / 2.0_f32.sqrt()),
+                WHITE,
+            );
+            draw_triangle_lines(
+                m,
+                m + Vec2::new(0.0, RADIUS),
+                m + Vec2::new(RADIUS / 2.0_f32.sqrt(), RADIUS / 2.0_f32.sqrt()),
+                2.0,
+                BLACK,
+            );
+            draw_line(
+                m.x + 0.5 * end.x,
+                m.y + 0.5 * end.y,
+                m.x + end.x,
+                m.y + end.y,
+                4.0,
+                WHITE,
+            );
         }
 
         next_frame().await
