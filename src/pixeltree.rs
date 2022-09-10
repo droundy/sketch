@@ -1,4 +1,4 @@
-use std::{borrow::Borrow, collections::BTreeSet};
+use std::{borrow::Borrow, collections::BTreeSet, iter::FromIterator};
 
 #[derive(Default, Clone, PartialEq, Eq, Debug)]
 pub struct Pixels {
@@ -112,12 +112,74 @@ impl Pixels {
         let w = w as u32;
         for r in self.ranges.iter().copied() {
             if r.0.start > w {
-                out.insert_borders(Borders(Overlaps { start: r.0.start - w, length: r.0.length}));
+                out.insert_borders(Borders(Overlaps {
+                    start: r.0.start - w,
+                    length: r.0.length,
+                }));
             }
             if r.0.start > 0 {
-                out.insert_borders(Borders(Overlaps { start: r.0.start - 1, length: r.0.length + 2}));
+                out.insert_borders(Borders(Overlaps {
+                    start: r.0.start - 1,
+                    length: r.0.length + 2,
+                }));
             }
-            out.insert_borders(Borders(Overlaps { start: r.0.start + w, length: r.0.length}));
+            out.insert_borders(Borders(Overlaps {
+                start: r.0.start + w,
+                length: r.0.length,
+            }));
+        }
+        out
+    }
+    fn remove_borders(&mut self, b: Borders) {
+        while let Some(o) = self.ranges.take(&b.0) {
+            // No need for the more expensive insert_borders, since we know there
+            // will not be an overlap.
+            if o.0.start < b.0.start {
+                self.ranges.insert(Borders(Overlaps {
+                    length: b.0.start - o.0.start,
+                    ..o.0
+                }));
+            }
+            if o.0.start + o.0.length > b.0.start + b.0.length {
+                self.ranges.insert(Borders(Overlaps {
+                    length: o.0.start + o.0.length - b.0.start - b.0.length,
+                    start: b.0.start + b.0.length,
+                }));
+            }
+        }
+    }
+
+    pub fn remove(&mut self, pix: &Pixels) {
+        for b in pix.ranges.iter().copied() {
+            self.remove_borders(b);
+        }
+    }
+}
+
+impl FromIterator<usize> for Pixels {
+    fn from_iter<T: IntoIterator<Item = usize>>(iter: T) -> Self {
+        let mut iter = iter.into_iter();
+        let mut out = Pixels {
+            ranges: std::collections::BTreeSet::new(),
+        };
+        if let Some(mut prev) = iter.next() {
+            let mut r = Borders(Overlaps {
+                start: prev as u32,
+                length: 1,
+            });
+            for p in iter {
+                if p == prev + 1 {
+                    r.0.length += 1;
+                } else {
+                    out.insert_borders(r);
+                    r = Borders(Overlaps {
+                        start: p as u32,
+                        length: 1,
+                    });
+                }
+                prev = p;
+            }
+            out.insert_borders(r);
         }
         out
     }
@@ -188,5 +250,18 @@ fn testme() {
     for i in 0..v1.len() {
         println!("Element {i} should be {}", v1[i]);
         assert_eq!(v1[i], set1.contains(i));
+    }
+
+    let s1: Pixels = [1, 2, 5, 7].into_iter().collect();
+    let mut s2: Pixels = (1..8).collect();
+    println!("\nFresh start! with {s1:?} and {s2:?}\n");
+    assert!(s1.overlaps(&s2));
+    let s2_minus_s1: Pixels = [3, 4, 6].into_iter().collect();
+
+    s2.remove(&s1);
+    println!("s2 is now {s2:?}");
+    println!("s2 should be {s2_minus_s1:?}");
+    for i in 0..16 {
+        assert_eq!(s2.contains(i), s2_minus_s1.contains(i));
     }
 }
