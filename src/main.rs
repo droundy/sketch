@@ -17,6 +17,7 @@ use macroquad::ui::root_ui;
 
 mod layer;
 mod pixels;
+mod pixeltree;
 mod tween;
 use layer::{clamp, Layer};
 use serde::{Deserialize, Serialize};
