@@ -74,6 +74,9 @@ impl Pixels {
             .iter()
             .flat_map(|r| r.0.start as usize..(r.0.start + r.0.length) as usize)
     }
+    pub fn is_empty(&self) -> bool {
+        self.ranges.is_empty()
+    }
     pub fn contains(&self, elem: usize) -> bool {
         self.ranges.contains(&Overlaps {
             start: elem as u32,

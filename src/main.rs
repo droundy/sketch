@@ -20,6 +20,7 @@ mod pixels;
 mod pixeltree;
 mod tween;
 use layer::{clamp, Layer};
+use pixeltree::Pixels;
 use serde::{Deserialize, Serialize};
 use tinyset::SetUsize;
 
@@ -121,7 +122,10 @@ impl Drawing {
             let idx = old_position.x.round() as usize + old_position.y.round() as usize * w;
             *moving_chunk = MovingChunk::from_mask(
                 w,
-                self.layers[self.current].get_filled_chunk(self.time, &SetUsize::from_iter([idx])),
+                self.layers[self.current]
+                    .get_filled_chunk(self.time, &SetUsize::from_iter([idx]))
+                    .iter()
+                    .collect(),
             );
             for i in self.current..self.layers.len() {
                 moving_chunk
@@ -691,7 +695,7 @@ async fn main() {
     let height = drawing.height as usize;
     let mut started = Instant::now();
     let mut needs_save = false;
-    let mut moving_chunk = MovingChunk::from_mask(width, SetUsize::new());
+    let mut moving_chunk = MovingChunk::from_mask(width, Pixels::default());
     loop {
         // clear_background(WHITE);
         if is_key_pressed(KeyCode::Escape) {
@@ -837,12 +841,12 @@ async fn main() {
                 needs_save = true;
                 drawing.handle_modified_bitmap(&mut frame_images, &mut frame_textures);
                 old_pos = None;
-                moving_chunk = MovingChunk::from_mask(width, SetUsize::new());
+                moving_chunk = MovingChunk::from_mask(width, Pixels::default());
             }
             drawing.show_cursor();
         } else {
             old_pos = None;
-            moving_chunk = MovingChunk::from_mask(width, SetUsize::new());
+            moving_chunk = MovingChunk::from_mask(width, Pixels::default());
 
             let (x, y) = mouse_position();
             let m = Vec2::new(x, y);
@@ -888,33 +892,26 @@ async fn main() {
 
 struct MovingChunk {
     offset: usize,
-    the_mask: SetUsize,
-    the_chunks: Vec<SetUsize>,
+    the_mask: Pixels,
+    the_chunks: Vec<Pixels>,
     /// The mask expanded a bit to check for overlap.
-    the_supermask: SetUsize,
+    the_supermask: Pixels,
     /// The chunks expanded a bit to check for overlap.
-    the_superchunks: Vec<SetUsize>,
+    the_superchunks: Vec<Pixels>,
     /// An always empty set
-    empty: SetUsize,
+    empty: Pixels,
     w: usize,
 }
 
 impl MovingChunk {
-    fn from_mask(w: usize, mask: SetUsize) -> Self {
-        let mut the_supermask = mask.clone();
-        for p in mask.iter() {
-            the_supermask.insert(p.wrapping_add(1));
-            the_supermask.insert(p.wrapping_add(w));
-            the_supermask.insert(p.wrapping_sub(1));
-            the_supermask.insert(p.wrapping_sub(w));
-        }
+    fn from_mask(w: usize, mask: Pixels) -> Self {
         MovingChunk {
             offset: 0,
+            the_supermask: mask.expand(w),
             the_mask: mask,
             the_chunks: Vec::new(),
-            the_supermask,
             the_superchunks: Vec::new(),
-            empty: SetUsize::new(),
+            empty: Pixels::default(),
             w,
         }
     }
@@ -922,20 +919,15 @@ impl MovingChunk {
         self.offset = self.offset.wrapping_add(offset);
     }
     fn insert_chunk(&mut self, which: usize, chunk: SetUsize) {
+        let chunk: Pixels = chunk.iter().collect();
         let w = self.w;
         while self.the_chunks.len() <= which {
-            self.the_chunks.push(SetUsize::new());
+            self.the_chunks.push(Pixels::default());
         }
         while self.the_superchunks.len() <= which {
-            self.the_superchunks.push(SetUsize::new());
+            self.the_superchunks.push(Pixels::default());
         }
-        let mut superchunk = chunk.clone();
-        for p in chunk.iter() {
-            superchunk.insert(p.wrapping_add(1));
-            superchunk.insert(p.wrapping_add(w));
-            superchunk.insert(p.wrapping_sub(1));
-            superchunk.insert(p.wrapping_sub(w));
-        }
+        let superchunk = chunk.expand(w);
         self.the_superchunks[which] = superchunk;
         self.the_chunks[which] = chunk;
     }
