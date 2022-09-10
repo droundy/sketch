@@ -107,6 +107,20 @@ impl Pixels {
             b = Borders(Overlaps { start, length });
         }
     }
+    pub fn expand(&self, w: usize) -> Pixels {
+        let mut out = Pixels::default();
+        let w = w as u32;
+        for r in self.ranges.iter().copied() {
+            if r.0.start > w {
+                out.insert_borders(Borders(Overlaps { start: r.0.start - w, length: r.0.length}));
+            }
+            if r.0.start > 0 {
+                out.insert_borders(Borders(Overlaps { start: r.0.start - 1, length: r.0.length + 2}));
+            }
+            out.insert_borders(Borders(Overlaps { start: r.0.start + w, length: r.0.length}));
+        }
+        out
+    }
 }
 
 impl From<Vec<bool>> for Pixels {
