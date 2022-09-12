@@ -2,13 +2,14 @@ use std::collections::HashMap;
 
 use macroquad::prelude::{screen_height, screen_width, Color, Image, Vec2};
 use serde::{Deserialize, Serialize};
+use tinyset::SetUsize;
 
-use crate::{pixeltree::Pixels, tween::Tween};
+use crate::{pixels::Pixels, tween::Tween};
 
 #[derive(Clone, Serialize, Deserialize)]
 struct Bitmap {
     time: f32,
-    pixels: Pixels,
+    pixels: SetUsize,
     #[serde(skip)]
     fill_pixels: Pixels,
 }
@@ -48,7 +49,7 @@ impl Layer {
             keyframes: vec![Bitmap {
                 time,
                 // texture: Texture2D::from_image(&bitmap),
-                pixels: Pixels::default(),
+                pixels: SetUsize::new(),
                 fill_pixels: Pixels::default(),
             }],
             tweens: HashMap::new(),
@@ -278,7 +279,7 @@ impl Layer {
         }
         (below, above)
     }
-    pub fn closest_points(&self, time: f32) -> &Pixels {
+    pub fn closest_points(&self, time: f32) -> &SetUsize {
         let i = self.closest_frame(time);
         &self.keyframes[i].pixels
     }
@@ -302,28 +303,77 @@ impl Layer {
         }
     }
 
-    pub fn erase_pixels(&mut self, time: f32, pixels: &Pixels) {
+    pub fn erase_pixels(&mut self, time: f32, pixels: impl IntoIterator<Item = usize>) {
         let i = self.closest_frame(time);
-        self.keyframes[i].pixels.remove(pixels);
+        for p in pixels {
+            self.keyframes[i].pixels.remove(p);
+        }
         self.compute_fill(i);
     }
-    pub fn add_pixels(&mut self, time: f32, pixels: &Pixels) {
+    pub fn add_pixels(&mut self, time: f32, pixels: impl IntoIterator<Item = usize>) {
         let i = self.closest_frame(time);
         self.keyframes[i].pixels.extend(pixels);
         self.compute_fill(i);
     }
-    pub fn get_chunk(&self, time: f32, selected: &Pixels) -> Pixels {
-        let i = self.closest_frame(time);
-        self.keyframes[i]
-            .pixels
-            .contiguous_with(self.width, selected)
-    }
-    pub fn get_filled_chunk(&self, time: f32, selected: &Pixels) -> Pixels {
+    pub fn get_chunk(&self, time: f32, selected: impl Iterator<Item = usize>) -> SetUsize {
         let w = self.width as usize;
         let i = self.closest_frame(time);
         let mut pixels = self.keyframes[i].pixels.clone();
-        pixels.extend(&self.keyframes[i].fill_pixels);
-        pixels.contiguous_with(self.width, selected)
+        let mut todo: Vec<usize> = selected.filter(|&p| pixels.remove(p)).collect();
+        let mut out = SetUsize::new();
+
+        while let Some(p) = todo.pop() {
+            out.insert(p);
+            if p > 0 && pixels.contains(p - 1) {
+                todo.push(p - 1);
+                pixels.remove(p - 1);
+            }
+            if pixels.contains(p + 1) {
+                todo.push(p + 1);
+                pixels.remove(p + 1);
+            }
+            if p >= w && pixels.contains(p - w) {
+                todo.push(p - w);
+                pixels.remove(p - w);
+            }
+            if pixels.contains(p + w) {
+                todo.push(p + w);
+                pixels.remove(p + w);
+            }
+        }
+        out
+    }
+    pub fn get_filled_chunk(&self, time: f32, selected: &SetUsize) -> SetUsize {
+        let w = self.width as usize;
+        let i = self.closest_frame(time);
+        let mut pixels = self.keyframes[i].pixels.clone();
+        pixels.extend(self.keyframes[i].fill_pixels.iter());
+        let mut todo: Vec<usize> = selected.iter().collect();
+        let mut out = SetUsize::new();
+        for p in todo.iter().copied() {
+            pixels.remove(p);
+        }
+
+        while let Some(p) = todo.pop() {
+            out.insert(p);
+            if p > 0 && pixels.contains(p - 1) {
+                todo.push(p - 1);
+                pixels.remove(p - 1);
+            }
+            if pixels.contains(p + 1) {
+                todo.push(p + 1);
+                pixels.remove(p + 1);
+            }
+            if p >= w && pixels.contains(p - w) {
+                todo.push(p - w);
+                pixels.remove(p - w);
+            }
+            if pixels.contains(p + w) {
+                todo.push(p + w);
+                pixels.remove(p + w);
+            }
+        }
+        out
     }
     pub fn move_pixels(&mut self, time: f32, displacement: Vec2) {
         let i = self.closest_frame(time);
@@ -351,7 +401,7 @@ impl Layer {
             // We already have a frame at this time.
             return;
         }
-        let mut pixels = Pixels::default();
+        let mut pixels = SetUsize::new();
         let mut fill_pixels = Pixels::default();
         if times.0 == times.1 {
             // In this case, self.image didn't get updated!

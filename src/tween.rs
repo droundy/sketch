@@ -1,8 +1,8 @@
 use std::{ops::Mul, time::Instant};
 
-use crate::pixeltree::Pixels;
 use glam::Vec2;
 use serde::{Deserialize, Serialize};
+use tinyset::SetUsize;
 
 /// A connection between two keyframes.
 #[derive(Clone, Serialize, Deserialize)]
@@ -11,7 +11,7 @@ pub struct Tween {
 }
 
 impl Tween {
-    pub fn new(w: usize, before: Pixels, after: Pixels) -> Self {
+    pub fn new(w: usize, before: SetUsize, after: SetUsize) -> Self {
         let mut chunks = Vec::new();
 
         let mut before_chunks = Chunk::find(w, before);
@@ -68,6 +68,16 @@ impl ChunkTween {
 
         let before_outline = outline(w, &mut before_pixels).unwrap();
         let after_outline = outline(w, &mut after_pixels).unwrap();
+        println!(
+            "Out of {} pixels before, {} participate in the outline.",
+            before_pixels.len(),
+            before_outline.len()
+        );
+        println!(
+            "Out of {} pixels after, {} participate in the outline.",
+            after_pixels.len(),
+            after_outline.len()
+        );
 
         let before_positions = before_outline
             .iter()
@@ -151,15 +161,17 @@ impl ChunkTween {
         let mut todo = connections.clone();
 
         for (b, a) in todo.iter().copied() {
-            before_pixels.remove_pixel(b);
-            after_pixels.remove_pixel(a);
+            before_pixels.remove(b);
+            after_pixels.remove(a);
         }
         // Apparently this "flood fill" algorithm can sometimes miss a few pixels, so
         // rather than keeping going until all pixels are connected, we quit when we
         // stop making progress.
-        let mut added_pixel = true;
-        while added_pixel {
-            added_pixel = false;
+        let mut last_before_len = before_pixels.len() + 1;
+        let mut last_after_len = after_pixels.len() + 1;
+        while before_pixels.len() != last_before_len && after_pixels.len() != last_after_len {
+            last_before_len = before_pixels.len();
+            last_after_len = after_pixels.len();
             let mut more = Vec::new();
             for (b, a) in todo.drain(..) {
                 let mut even_more = Vec::new();
@@ -199,21 +211,29 @@ impl ChunkTween {
                 } else if after_pixels.contains(a.wrapping_sub(w)) {
                     even_more.push((b, a.wrapping_sub(w)));
                 }
-                if !even_more.is_empty() {
-                    added_pixel = true;
-                }
                 for (b, a) in even_more.into_iter() {
-                    before_pixels.remove_pixel(b);
-                    after_pixels.remove_pixel(a);
+                    before_pixels.remove(b);
+                    after_pixels.remove(a);
                     more.push((b, a));
                 }
             }
             more.sort();
             more.dedup();
+            println!(
+                "    Found {} more connections with {} and {} pixels left to go...",
+                more.len(),
+                before_pixels.len(),
+                after_pixels.len()
+            );
             for (b, a) in more.iter().copied() {
-                before_pixels.remove_pixel(b);
-                after_pixels.remove_pixel(a);
+                before_pixels.remove(b);
+                after_pixels.remove(a);
             }
+            println!(
+                "We handled {} before and {} after",
+                last_before_len - before_pixels.len(),
+                last_after_len - after_pixels.len()
+            );
             connections.extend(more.iter().copied());
             todo = more;
         }
@@ -265,7 +285,7 @@ impl ChunkTween {
 }
 
 pub struct Chunk {
-    points: Pixels,
+    points: SetUsize,
     center: Vec2,
     extrema: [Vec2; 4],
     area: usize,
@@ -278,23 +298,22 @@ pub struct Chunk {
 }
 
 impl Chunk {
-    pub fn find(w: usize, mut pixels: Pixels) -> Vec<Self> {
+    pub fn find(w: usize, mut pixels: SetUsize) -> Vec<Self> {
         let mut out = Vec::new();
         while let Some(points) = contiguous_pixels(w, &mut pixels) {
             out.push(Chunk::new(w, points));
         }
         out
     }
-    pub fn new(w: usize, points: Pixels) -> Self {
+    pub fn new(w: usize, points: SetUsize) -> Self {
+        let area = points.len();
         let mut center = Vec2::ZERO;
         let top = points.iter().next().unwrap();
         let mut top = Vec2::new((top % w) as f32, (top / w) as f32);
         let mut left = top;
         let mut bottom = top;
         let mut right = top;
-        let mut area = 0;
         for p in points.iter() {
-            area += 1;
             let v = Vec2::new((p % w) as f32, (p / w) as f32);
             center += v;
             // Combine x and y to get approximations of x and y that are likely
@@ -327,9 +346,9 @@ impl Chunk {
             y2 += dy * dy;
             xy += dx * dy;
         }
-        x2 /= area as f32;
-        y2 /= area as f32;
-        xy /= area as f32;
+        x2 /= points.len() as f32;
+        y2 /= points.len() as f32;
+        xy /= points.len() as f32;
         // v = (a b)
         // x2*a + xy*b = e*a
         // xy*a + y2*b = e*b
@@ -398,35 +417,35 @@ impl Chunk {
     }
 }
 
-fn contiguous_pixels(w: usize, pixels: &mut Pixels) -> Option<Pixels> {
-    let mut out = Pixels::default();
+fn contiguous_pixels(w: usize, pixels: &mut SetUsize) -> Option<SetUsize> {
+    let mut out = SetUsize::new();
 
     let p = pixels.iter().next()?;
-    pixels.remove_pixel(p);
+    pixels.remove(p);
     let mut todo = vec![p];
     while let Some(p) = todo.pop() {
         out.insert(p);
         if p > 0 && pixels.contains(p - 1) {
             todo.push(p - 1);
-            pixels.remove_pixel(p - 1);
+            pixels.remove(p - 1);
         }
         if pixels.contains(p + 1) {
             todo.push(p + 1);
-            pixels.remove_pixel(p + 1);
+            pixels.remove(p + 1);
         }
         if p >= w && pixels.contains(p - w) {
             todo.push(p - w);
-            pixels.remove_pixel(p - w);
+            pixels.remove(p - w);
         }
         if pixels.contains(p + w) {
             todo.push(p + w);
-            pixels.remove_pixel(p + w);
+            pixels.remove(p + w);
         }
     }
     Some(out)
 }
 
-fn outline(w: usize, pixels: &mut Pixels) -> Option<Vec<usize>> {
+fn outline(w: usize, pixels: &mut SetUsize) -> Option<Vec<usize>> {
     let mut out = Vec::new();
 
     let mut start = pixels.iter().next()?;
@@ -446,7 +465,7 @@ fn outline(w: usize, pixels: &mut Pixels) -> Option<Vec<usize>> {
     } else {
         return Some(out);
     };
-    pixels.remove_pixel(next);
+    pixels.remove(next);
     out.push(next);
     loop {
         let n = if next == last + 1 {
@@ -504,7 +523,7 @@ fn outline(w: usize, pixels: &mut Pixels) -> Option<Vec<usize>> {
 
 #[test]
 fn chunks_test() {
-    let pixels = Pixels::from_iter([2, 5, 8]);
+    let pixels = SetUsize::from_iter([2, 5, 8]);
     let w = 3;
     let chunks = Chunk::find(w, pixels);
     assert_eq!(1, chunks.len());
@@ -514,7 +533,7 @@ fn chunks_test() {
     assert_eq!(2.0_f32.sqrt(), chunks[0].major);
     assert_eq!(0.0, chunks[0].minor);
 
-    let pixels = Pixels::from_iter([2, 3, 5, 6, 8]);
+    let pixels = SetUsize::from_iter([2, 3, 5, 6, 8]);
     let w = 3;
     let chunks = Chunk::find(w, pixels);
     assert_eq!(2, chunks.len());

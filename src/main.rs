@@ -22,6 +22,7 @@ mod tween;
 use layer::{clamp, Layer};
 use pixeltree::Pixels;
 use serde::{Deserialize, Serialize};
+use tinyset::SetUsize;
 
 fn conf() -> Conf {
     Conf {
@@ -97,14 +98,14 @@ impl Drawing {
             std::fs::write(path, bincode::serialize(self).unwrap())
         }
     }
-    fn pen_drew(&mut self, pixels: Pixels) {
+    fn pen_drew(&mut self, pixels: SetUsize) {
         if self.keyframes.iter().any(|k| k.time == self.time) {
             self.layers[self.current].ensure_we_have_frame_at(self.time);
         }
         if self.tool == Tool::Eraser {
-            self.layers[self.current].erase_pixels(self.time, &pixels);
+            self.layers[self.current].erase_pixels(self.time, pixels);
         } else {
-            self.layers[self.current].add_pixels(self.time, &pixels);
+            self.layers[self.current].add_pixels(self.time, pixels);
         }
     }
     fn move_pixels(&mut self, displacement: Vec2) {
@@ -119,11 +120,10 @@ impl Drawing {
         let w = self.width as usize;
         if moving_chunk.the_mask.is_empty() {
             let idx = old_position.x.round() as usize + old_position.y.round() as usize * w;
-            println!("Creating moving chunk from {idx}");
             *moving_chunk = MovingChunk::from_mask(
                 w,
                 self.layers[self.current]
-                    .get_filled_chunk(self.time, &Pixels::from_iter([idx]))
+                    .get_filled_chunk(self.time, &SetUsize::from_iter([idx]))
                     .iter()
                     .collect(),
             );
@@ -131,32 +131,32 @@ impl Drawing {
                 moving_chunk
                     .insert_chunk(i, self.layers[i].get_chunk(self.time, moving_chunk.mask()));
             }
-            println!("Done setting up moving_chunk.");
         }
         let offset = new_position - old_position;
         let offset = offset.x.round() as isize + offset.y.round() as isize * self.width as isize;
-        println!("offset is {offset}");
+        let offset = offset as usize;
 
         // First we erase the chunk, and check whether the moved chunk is going to collide
         // with another chunk.
-        let mut shifted = moving_chunk.clone();
-        shifted.shift_by(offset);
         let mut need_to_not_move = false;
         for which in self.current..self.layers.len() {
             let l = &mut self.layers[which];
-            if !moving_chunk.chunks(which).is_empty() {
-                l.ensure_we_have_frame_at(self.time);
-                l.erase_pixels(self.time, moving_chunk.chunks(which));
-            }
+            l.erase_pixels(self.time, moving_chunk.chunks(which));
             let pixels = l.closest_points(self.time);
-            if shifted.mask().borders(pixels) || shifted.chunks(which).borders(pixels) {
+            if moving_chunk
+                .supermask()
+                .chain(moving_chunk.superchunks(which))
+                .any(|p| {
+                    let p = p.wrapping_add(offset);
+                    pixels.contains(p)
+                })
+            {
                 need_to_not_move = true;
             }
         }
         if !need_to_not_move {
             // We can offset the chunk!
-            println!("I am shifting.");
-            *moving_chunk = shifted;
+            moving_chunk.shift_by(offset);
         }
         // Now draw the chunk in its new (or maybe old?) position.
         for which in self.current..self.layers.len() {
@@ -773,7 +773,7 @@ async fn main() {
                 let pos = mouse_position();
                 let pos = Vec2::new(pos.0, pos.1);
                 let radius = drawing.tool.radius();
-                let mut drawn = Pixels::default();
+                let mut drawn = SetUsize::new();
                 if let Some(old) = old_pos {
                     if drawing.tool == Tool::Move {
                         drawing.move_pixels(pos - old);
@@ -890,10 +890,15 @@ async fn main() {
     }
 }
 
-#[derive(Clone)]
 struct MovingChunk {
+    offset: usize,
     the_mask: Pixels,
     the_chunks: Vec<Pixels>,
+    /// The mask expanded a bit to check for overlap.
+    the_supermask: Pixels,
+    /// The chunks expanded a bit to check for overlap.
+    the_superchunks: Vec<Pixels>,
+    /// An always empty set
     empty: Pixels,
     w: usize,
 }
@@ -901,34 +906,51 @@ struct MovingChunk {
 impl MovingChunk {
     fn from_mask(w: usize, mask: Pixels) -> Self {
         MovingChunk {
+            offset: 0,
+            the_supermask: mask.expand(w),
             the_mask: mask,
             the_chunks: Vec::new(),
+            the_superchunks: Vec::new(),
             empty: Pixels::default(),
             w,
         }
     }
-    fn shift_by(&mut self, offset: isize) {
-        self.the_mask.shift_by(offset);
-        for chunk in self.the_chunks.iter_mut() {
-            chunk.shift_by(offset);
-        }
+    fn shift_by(&mut self, offset: usize) {
+        self.offset = self.offset.wrapping_add(offset);
     }
-    fn insert_chunk(&mut self, which: usize, chunk: Pixels) {
+    fn insert_chunk(&mut self, which: usize, chunk: SetUsize) {
         let chunk: Pixels = chunk.iter().collect();
         let w = self.w;
         while self.the_chunks.len() <= which {
             self.the_chunks.push(Pixels::default());
         }
+        while self.the_superchunks.len() <= which {
+            self.the_superchunks.push(Pixels::default());
+        }
+        let superchunk = chunk.expand(w);
+        self.the_superchunks[which] = superchunk;
         self.the_chunks[which] = chunk;
     }
-    fn mask(&self) -> &Pixels {
-        &self.the_mask
+    fn mask(&self) -> impl Iterator<Item = usize> + '_ {
+        self.the_mask.iter().map(|p| p.wrapping_add(self.offset))
     }
-    fn chunks(&self, which: usize) -> &Pixels {
-        if let Some(chunk) = self.the_chunks.get(which) {
-            &chunk
-        } else {
-            &self.empty
-        }
+    fn supermask(&self) -> impl Iterator<Item = usize> + '_ {
+        self.the_supermask
+            .iter()
+            .map(|p| p.wrapping_add(self.offset))
+    }
+    fn chunks(&self, which: usize) -> impl Iterator<Item = usize> + '_ {
+        self.the_chunks
+            .get(which)
+            .unwrap_or(&self.empty)
+            .iter()
+            .map(|p| p.wrapping_add(self.offset))
+    }
+    fn superchunks(&self, which: usize) -> impl Iterator<Item = usize> + '_ {
+        self.the_superchunks
+            .get(which)
+            .unwrap_or(&self.empty)
+            .iter()
+            .map(|p| p.wrapping_add(self.offset))
     }
 }
