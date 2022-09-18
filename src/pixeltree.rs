@@ -364,4 +364,27 @@ fn testme() {
     for i in 0..16 {
         assert_eq!(s2.contains(i), s2_minus_s1.contains(i));
     }
+
+    for v0 in [false, true] {
+        for v1 in [false, true] {
+            for v2 in [false, true] {
+                for v3 in [false, true] {
+                    let v = vec![v0, v1, v2, v3];
+                    let s1 = Pixels::from(v.clone());
+                    for i in 0..4 {
+                        assert_eq!(v[i], s1.contains(i));
+                    }
+                    for i in 0..4 {
+                        let mut v = v.clone();
+                        let mut s1 = s1.clone();
+                        v[i] = false;
+                        s1.remove_pixel(i);
+                        for j in 0..4 {
+                            assert_eq!(v[j], s1.contains(j));
+                        }
+                    }
+                }
+            }
+        }
+    }
 }
