@@ -1,12 +1,14 @@
 use std::{borrow::Borrow, collections::BTreeSet, iter::FromIterator};
 
-#[derive(Default, Clone, PartialEq, Eq, Debug)]
+use serde::{Deserialize, Serialize};
+
+#[derive(Default, Clone, PartialEq, Eq, Debug, Serialize, Deserialize)]
 pub struct Pixels {
     ranges: BTreeSet<Borders>,
 }
 
 /// These ranges are equal if they overlap or border one another.
-#[derive(Default, Clone, Copy, PartialEq, Eq, Debug)]
+#[derive(Default, Clone, Copy, PartialEq, Eq, Debug, Serialize, Deserialize)]
 struct Borders(Overlaps);
 
 impl Borrow<Overlaps> for Borders {
@@ -39,7 +41,7 @@ impl Ord for Borders {
 }
 
 /// These ranges are equal if one overlaps the other.
-#[derive(Default, Clone, Copy, PartialEq, Eq, Debug)]
+#[derive(Default, Clone, Copy, PartialEq, Eq, Debug, Serialize, Deserialize)]
 struct Overlaps {
     start: u32,
     length: u32,
@@ -83,6 +85,43 @@ impl Pixels {
             length: 1,
         })
     }
+    pub fn contiguous_with(&self, w: usize, other: &Pixels) -> Pixels {
+        let w = w as u32;
+        let mut temp = self.clone();
+        let mut contiguous = Pixels::default();
+        let mut todo = Vec::new();
+        for r in other.ranges.iter().map(|b| b.0) {
+            while let Some(b) = temp.ranges.take(&r) {
+                contiguous.ranges.insert(b);
+                todo.push(b);
+            }
+        }
+        while let Some(r) = todo.pop() {
+            while let Some(b) = temp.ranges.take(&r) {
+                contiguous.ranges.insert(b);
+                todo.push(b);
+            }
+            if r.0.start > w {
+                let up = Overlaps {
+                    start: r.0.start - w,
+                    length: r.0.length,
+                };
+                while let Some(b) = temp.ranges.take(&up) {
+                    contiguous.ranges.insert(b);
+                    todo.push(b);
+                }
+            }
+            let down = Overlaps {
+                start: r.0.start + w,
+                length: r.0.length,
+            };
+            while let Some(b) = temp.ranges.take(&down) {
+                contiguous.ranges.insert(b);
+                todo.push(b);
+            }
+        }
+        contiguous
+    }
     pub fn overlaps(&self, other: &Pixels) -> bool {
         if other.ranges.len() < self.ranges.len() {
             other.overlaps(self)
@@ -93,6 +132,41 @@ impl Pixels {
                 }
             }
             false
+        }
+    }
+    pub fn borders(&self, other: &Pixels) -> bool {
+        if other.ranges.len() < self.ranges.len() {
+            other.borders(self)
+        } else {
+            for r in self.ranges.iter() {
+                if other.ranges.contains(r) {
+                    return true;
+                }
+            }
+            false
+        }
+    }
+    pub fn shift_by(&mut self, offset: isize) {
+        if offset < 0 {
+            let offset = offset as u32;
+            let old_ranges = std::mem::take(&mut self.ranges);
+            self.ranges = old_ranges
+                .into_iter()
+                .map(|mut r| {
+                    r.0.start += offset;
+                    r
+                })
+                .collect();
+        } else if offset > 0 {
+            let offset = offset as u32;
+            let old_ranges = std::mem::take(&mut self.ranges);
+            self.ranges = old_ranges
+                .into_iter()
+                .map(|mut r| {
+                    r.0.start += offset;
+                    r
+                })
+                .collect();
         }
     }
     pub fn insert(&mut self, elem: usize) {
@@ -108,6 +182,11 @@ impl Pixels {
             let stop = std::cmp::max(o.0.start + o.0.length, b.0.start + b.0.length);
             let length = stop - start;
             b = Borders(Overlaps { start, length });
+        }
+    }
+    pub fn extend(&mut self, pixels: &Pixels) {
+        for b in pixels.ranges.iter().copied() {
+            self.insert_borders(b);
         }
     }
     pub fn expand(&self, w: usize) -> Pixels {
@@ -155,6 +234,24 @@ impl Pixels {
     pub fn remove(&mut self, pix: &Pixels) {
         for b in pix.ranges.iter().copied() {
             self.remove_borders(b);
+        }
+    }
+    pub fn remove_pixel(&mut self, p: usize) {
+        self.remove_borders(Borders(Overlaps {
+            start: p as u32,
+            length: 1,
+        }));
+    }
+
+    pub fn keep_intersection(&mut self, pix: &Pixels) {
+        let mut mine = std::mem::take(&mut self.ranges);
+        for r in pix.ranges.iter().map(|b| b.0) {
+            while let Some(rr) = mine.take(&r) {
+                let start = std::cmp::max(rr.0.start, r.start);
+                let end = std::cmp::min(rr.0.start + rr.0.length, r.start + r.length);
+                let length = end - start;
+                self.ranges.insert(Borders(Overlaps { start, length }));
+            }
         }
     }
 }
