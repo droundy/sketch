@@ -375,15 +375,17 @@ impl Drawing {
         let fx = (pos.0 + w - swidth) / w;
         let fy = (pos.1 + h - sheight) / h;
         if let Some(c) = color_selector_color(fx, fy) {
-            if is_mouse_button_down(MouseButton::Left) {
+            if is_mouse_button_pressed(MouseButton::Left) {
+                AM_DRAGGING.store(true, std::sync::atomic::Ordering::Relaxed);
+            } else if !is_mouse_button_down(MouseButton::Left) {
+                AM_DRAGGING.store(false, std::sync::atomic::Ordering::Relaxed);
+            }
+            if AM_DRAGGING.load(std::sync::atomic::Ordering::Relaxed) {
                 if self.am_selecting_fill {
                     self.layers[self.current].fill_color = c;
                 } else {
                     self.layers[self.current].color = c;
                 }
-                AM_DRAGGING.store(true, std::sync::atomic::Ordering::Relaxed);
-            } else {
-                AM_DRAGGING.store(false, std::sync::atomic::Ordering::Relaxed);
             }
             true
         } else {
