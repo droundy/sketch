@@ -319,7 +319,6 @@ impl Layer {
             .contiguous_with(self.width, selected)
     }
     pub fn get_filled_chunk(&self, time: f32, selected: &Pixels) -> Pixels {
-        let w = self.width as usize;
         let i = self.closest_frame(time);
         let mut pixels = self.keyframes[i].pixels.clone();
         pixels.extend(&self.keyframes[i].fill_pixels);

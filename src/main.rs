@@ -16,7 +16,6 @@ use macroquad::texture::{draw_texture_ex, DrawTextureParams, Image, Texture2D};
 use macroquad::ui::root_ui;
 
 mod layer;
-mod pixels;
 mod pixeltree;
 mod tween;
 use layer::{clamp, Layer};
@@ -121,7 +120,6 @@ impl Drawing {
             let idx = old_position.x.round() as usize + old_position.y.round() as usize * w;
             println!("Creating moving chunk from {idx}");
             *moving_chunk = MovingChunk::from_mask(
-                w,
                 self.layers[self.current]
                     .get_filled_chunk(self.time, &Pixels::from_iter([idx]))
                     .iter()
@@ -697,7 +695,7 @@ async fn main() {
     let height = drawing.height as usize;
     let mut started = Instant::now();
     let mut needs_save = false;
-    let mut moving_chunk = MovingChunk::from_mask(width, Pixels::default());
+    let mut moving_chunk = MovingChunk::from_mask(Pixels::default());
     loop {
         // clear_background(WHITE);
         if is_key_pressed(KeyCode::Escape) {
@@ -843,12 +841,12 @@ async fn main() {
                 needs_save = true;
                 drawing.handle_modified_bitmap(&mut frame_images, &mut frame_textures);
                 old_pos = None;
-                moving_chunk = MovingChunk::from_mask(width, Pixels::default());
+                moving_chunk = MovingChunk::from_mask(Pixels::default());
             }
             drawing.show_cursor();
         } else {
             old_pos = None;
-            moving_chunk = MovingChunk::from_mask(width, Pixels::default());
+            moving_chunk = MovingChunk::from_mask(Pixels::default());
 
             let (x, y) = mouse_position();
             let m = Vec2::new(x, y);
@@ -897,16 +895,14 @@ struct MovingChunk {
     the_mask: Pixels,
     the_chunks: Vec<Pixels>,
     empty: Pixels,
-    w: usize,
 }
 
 impl MovingChunk {
-    fn from_mask(w: usize, mask: Pixels) -> Self {
+    fn from_mask(mask: Pixels) -> Self {
         MovingChunk {
             the_mask: mask,
             the_chunks: Vec::new(),
             empty: Pixels::default(),
-            w,
         }
     }
     fn shift_by(&mut self, offset: isize) {
@@ -917,7 +913,6 @@ impl MovingChunk {
     }
     fn insert_chunk(&mut self, which: usize, chunk: Pixels) {
         let chunk: Pixels = chunk.iter().collect();
-        let w = self.w;
         while self.the_chunks.len() <= which {
             self.the_chunks.push(Pixels::default());
         }
