@@ -44,11 +44,7 @@ impl Tween {
                 after_chunks.swap(i, j);
             }
         }
-        for (chunknum, (before, after)) in before_chunks
-            .into_iter()
-            .zip(after_chunks.into_iter())
-            .enumerate()
-        {
+        for (before, after) in before_chunks.into_iter().zip(after_chunks.into_iter()) {
             let before_fill: Pixels = before.points.compute_fill(w);
             let after_fill: Pixels = after.points.compute_fill(w);
             if after_fill.is_empty() || before_fill.is_empty() {
@@ -81,9 +77,9 @@ impl Tween {
         for c in self.fill_chunks.iter() {
             fill.extend(&c.interpolate(fraction));
         }
-        outline = outline.compute_fill(w);
-        fill = fill.compute_fill(w);
+        outline.extend(&outline.compute_fill(w));
         outline.remove(&fill);
+        outline.remove(&fill.compute_fill(w));
         for p in outline.iter() {
             if let Some(x) = pixels.get_mut(p) {
                 *x = true;
