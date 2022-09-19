@@ -68,36 +68,7 @@ impl Layer {
     fn compute_fill(&mut self, which: usize) {
         self.tweens.retain(|k, _| k.0 != which && k.1 != which);
         let k = &mut self.keyframes[which];
-        {
-            let mut inside = vec![true; self.width * self.height];
-            let image_len = inside.len();
-            for i in k.pixels.iter().filter(|&i| i < image_len) {
-                inside[i] = false;
-            }
-
-            let mut todo = vec![0];
-            let w = self.width;
-            inside[0] = false;
-            while let Some(i) = todo.pop() {
-                if i > 0 && inside[i - 1] {
-                    inside[i - 1] = false;
-                    todo.push(i - 1);
-                }
-                if i + 1 < image_len && inside[i + 1] {
-                    inside[i + 1] = false;
-                    todo.push(i + 1);
-                }
-                if i >= w && inside[i - w] {
-                    inside[i - w] = false;
-                    todo.push(i - w);
-                }
-                if i + w < image_len && inside[i + w] {
-                    inside[i + w] = false;
-                    todo.push(i + w);
-                }
-            }
-            k.fill_pixels = Pixels::from(inside);
-        }
+        k.fill_pixels = k.pixels.compute_fill(self.width);
     }
     pub fn handle_modified_bitmap(&mut self, time: f32) {
         let which = self.closest_frame(time);

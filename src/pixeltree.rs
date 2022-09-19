@@ -254,6 +254,41 @@ impl Pixels {
             }
         }
     }
+
+    pub fn compute_fill(&self, w: usize) -> Pixels {
+        if let Some(max) = self.ranges.iter().copied().last() {
+            let h = ((max.0.start + max.0.length + 1) as usize) / w + 1;
+            let mut inside = vec![true; w * h];
+            let image_len = inside.len();
+            for i in self.iter().filter(|&i| i < image_len) {
+                inside[i] = false;
+            }
+
+            let mut todo = vec![0];
+            inside[0] = false;
+            while let Some(i) = todo.pop() {
+                if i > 0 && inside[i - 1] {
+                    inside[i - 1] = false;
+                    todo.push(i - 1);
+                }
+                if i + 1 < image_len && inside[i + 1] {
+                    inside[i + 1] = false;
+                    todo.push(i + 1);
+                }
+                if i >= w && inside[i - w] {
+                    inside[i - w] = false;
+                    todo.push(i - w);
+                }
+                if i + w < image_len && inside[i + w] {
+                    inside[i + w] = false;
+                    todo.push(i + w);
+                }
+            }
+            Pixels::from(inside)
+        } else {
+            Pixels::default()
+        }
+    }
 }
 
 impl FromIterator<usize> for Pixels {

@@ -8,11 +8,19 @@ use serde::{Deserialize, Serialize};
 #[derive(Clone, Serialize, Deserialize)]
 pub struct Tween {
     chunks: Vec<ChunkTween>,
+    fill_chunks: Vec<ChunkTween>,
 }
 
 impl Tween {
     pub fn new(w: usize, before: Pixels, after: Pixels) -> Self {
+        if before.is_empty() || after.is_empty() {
+            return Tween {
+                chunks: Vec::new(),
+                fill_chunks: Vec::new(),
+            };
+        }
         let mut chunks = Vec::new();
+        let mut fill_chunks = Vec::new();
 
         let mut before_chunks = Chunk::find(w, before);
         before_chunks.sort_by(|a, b| b.area.cmp(&a.area));
@@ -21,7 +29,10 @@ impl Tween {
 
         let nchunks = std::cmp::min(before_chunks.len(), after_chunks.len());
         if nchunks == 0 {
-            return Tween { chunks: Vec::new() };
+            return Tween {
+                chunks: Vec::new(),
+                fill_chunks: Vec::new(),
+            };
         }
         // FIXME this is a hokwy way to pair up the chunks.
         for _ in 0..1000 {
@@ -33,16 +44,50 @@ impl Tween {
                 after_chunks.swap(i, j);
             }
         }
-        for (before, after) in before_chunks.into_iter().zip(after_chunks.into_iter()) {
-            chunks.push(ChunkTween::new(w, before, after));
+        for (chunknum, (before, after)) in before_chunks
+            .into_iter()
+            .zip(after_chunks.into_iter())
+            .enumerate()
+        {
+            let before_fill: Pixels = before.points.compute_fill(w);
+            let after_fill: Pixels = after.points.compute_fill(w);
+            if after_fill.is_empty() || before_fill.is_empty() {
+                chunks.push(ChunkTween::new(w, before, after));
+            } else {
+                let tween_fill = Tween::new(w, before_fill, after_fill);
+                chunks.push(ChunkTween::new(w, before, after));
+                fill_chunks.extend(tween_fill.chunks);
+                chunks.extend(tween_fill.fill_chunks);
+            }
         }
-        Tween { chunks }
+        Tween {
+            chunks,
+            fill_chunks,
+        }
     }
 
     /// Draw this Tween to the pixel buffer
     pub fn draw(&self, fraction: f32, pixels: &mut [bool]) {
+        let w = if let Some(c) = self.chunks.first() {
+            c.w
+        } else {
+            return;
+        };
+        let mut outline = Pixels::default();
+        let mut fill = Pixels::default();
         for c in self.chunks.iter() {
-            c.draw(fraction, pixels);
+            outline.extend(&c.interpolate(fraction));
+        }
+        for c in self.fill_chunks.iter() {
+            fill.extend(&c.interpolate(fraction));
+        }
+        outline = outline.compute_fill(w);
+        fill = fill.compute_fill(w);
+        outline.remove(&fill);
+        for p in outline.iter() {
+            if let Some(x) = pixels.get_mut(p) {
+                *x = true;
+            }
         }
     }
 }
@@ -148,85 +193,8 @@ impl ChunkTween {
             after_outline.len()
         );
 
-        let mut todo = connections.clone();
-
-        for (b, a) in todo.iter().copied() {
-            before_pixels.remove_pixel(b);
-            after_pixels.remove_pixel(a);
-        }
-        // Apparently this "flood fill" algorithm can sometimes miss a few pixels, so
-        // rather than keeping going until all pixels are connected, we quit when we
-        // stop making progress.
-        let mut added_pixel = true;
-        while added_pixel {
-            added_pixel = false;
-            let mut more = Vec::new();
-            for (b, a) in todo.drain(..) {
-                let mut even_more = Vec::new();
-                if before_pixels.contains(b + 1) {
-                    if after_pixels.contains(a + 1) {
-                        even_more.push((b + 1, a + 1));
-                    } else {
-                        even_more.push((b + 1, a));
-                    }
-                } else if after_pixels.contains(a + 1) {
-                    even_more.push((b, a + 1));
-                }
-                if before_pixels.contains(b + w) {
-                    if after_pixels.contains(a + w) {
-                        even_more.push((b + w, a + w));
-                    } else {
-                        even_more.push((b + w, a));
-                    }
-                } else if after_pixels.contains(a + w) {
-                    even_more.push((b, a + w));
-                }
-                if before_pixels.contains(b.wrapping_sub(1)) {
-                    if after_pixels.contains(a.wrapping_sub(1)) {
-                        even_more.push((b.wrapping_sub(1), a.wrapping_sub(1)));
-                    } else {
-                        even_more.push((b.wrapping_sub(1), a));
-                    }
-                } else if after_pixels.contains(a.wrapping_sub(1)) {
-                    even_more.push((b, a.wrapping_sub(1)));
-                }
-                if before_pixels.contains(b.wrapping_sub(w)) {
-                    if after_pixels.contains(a.wrapping_sub(w)) {
-                        even_more.push((b.wrapping_sub(w), a.wrapping_sub(w)));
-                    } else {
-                        even_more.push((b.wrapping_sub(w), a));
-                    }
-                } else if after_pixels.contains(a.wrapping_sub(w)) {
-                    even_more.push((b, a.wrapping_sub(w)));
-                }
-                if !even_more.is_empty() {
-                    added_pixel = true;
-                }
-                for (b, a) in even_more.into_iter() {
-                    before_pixels.remove_pixel(b);
-                    after_pixels.remove_pixel(a);
-                    more.push((b, a));
-                }
-            }
-            more.sort();
-            more.dedup();
-            for (b, a) in more.iter().copied() {
-                before_pixels.remove_pixel(b);
-                after_pixels.remove_pixel(a);
-            }
-            connections.extend(more.iter().copied());
-            todo = more;
-        }
-
         connections.sort();
         connections.dedup();
-        println!(
-            "Found {} connections between {} and {} pixels for {} connections per pixel",
-            connections.len(),
-            before_outline.len(),
-            after_outline.len(),
-            connections.len() as f64 / before_outline.len() as f64
-        );
 
         ChunkTween {
             w,
@@ -236,23 +204,23 @@ impl ChunkTween {
     }
 
     /// Draw this ChunkTween to the pixel buffer
-    fn draw(&self, fraction: f32, pixels: &mut [bool]) {
+    fn interpolate(&self, fraction: f32) -> Pixels {
         assert!(fraction >= 0.0);
         assert!(fraction <= 1.0);
         let reverse_transform = (1.0 - fraction) * self.transform.reverse();
         let transform = fraction * self.transform;
         let start = Instant::now();
+        let mut pixels = Pixels::default();
         for &(b, a) in self.connections.iter() {
             let b = transform * Vec2::new((b % self.w) as f32, (b / self.w) as f32);
             let a = reverse_transform * Vec2::new((a % self.w) as f32, (a / self.w) as f32);
             let p = fraction * a + (1.0 - fraction) * b;
             let w = self.w;
             let idx0 = p.x as usize + (p.y as usize) * w;
-            for idx in [idx0, idx0 + 1, idx0 + w, idx0 + w + 1] {
-                if let Some(p) = pixels.get_mut(idx) {
-                    *p = true;
-                }
-            }
+            pixels.insert(idx0);
+            pixels.insert(idx0 + 1);
+            pixels.insert(idx0 + w);
+            pixels.insert(idx0 + w + 1);
         }
         if start.elapsed().as_secs_f64() > 6e-3 {
             println!(
@@ -261,6 +229,7 @@ impl ChunkTween {
                 start.elapsed().as_secs_f64() * 1e3
             );
         }
+        pixels
     }
 }
 
@@ -446,7 +415,6 @@ fn outline(w: usize, pixels: &mut Pixels) -> Option<Vec<usize>> {
     } else {
         return Some(out);
     };
-    pixels.remove_pixel(next);
     out.push(next);
     loop {
         let n = if next == last + 1 {
