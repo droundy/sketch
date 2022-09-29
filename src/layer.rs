@@ -107,7 +107,7 @@ impl Layer {
             if self.fill_color[3] > 0 {
                 for i in self.keyframes[before].fill_pixels.iter() {
                     if let Some(p) = pixels.get_mut(i) {
-                        *i = self.fill_color;
+                        *p = self.fill_color;
                     }
                 }
             }
