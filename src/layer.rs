@@ -159,6 +159,30 @@ impl Layer {
         }
     }
 
+    pub fn draw_points(&mut self, time: f32) -> (Pixels, Pixels) {
+        let (before, after) = self.closest_frames(time);
+        if before == after {
+            let penpoints = self.keyframes[before].pixels.clone();
+            let fillpoints = self.keyframes[before].fill_pixels.clone();
+            (penpoints, fillpoints)
+        } else {
+            if self.tweens.get(&(before, after)).is_none() {
+                self.tweens.insert(
+                    (before, after),
+                    Tween::new(
+                        self.width,
+                        self.keyframes[before].pixels.clone(),
+                        self.keyframes[after].pixels.clone(),
+                    ),
+                );
+            }
+            let tween = self.tweens.get_mut(&(before, after)).unwrap();
+            let fraction = (time - self.keyframes[before].time)
+                / (self.keyframes[after].time - self.keyframes[before].time);
+            tween.draw_points(fraction)
+        }
+    }
+
     pub fn draw_gif(&mut self, time: f32, color: u8, pixels: &mut [u8]) {
         let (before, after) = self.closest_frames(time);
         let mut bitmap = vec![false; self.width * self.height];
@@ -323,13 +347,7 @@ impl Layer {
             // We already have a frame at this time.
             return;
         }
-        let mut pixels = Pixels::default();
-        let mut fill_pixels = Pixels::default();
-        if times.0 == times.1 {
-            // In this case, self.image didn't get updated!
-            pixels = self.keyframes[times.0].pixels.clone();
-            fill_pixels = self.keyframes[times.0].fill_pixels.clone();
-        }
+        let (pixels, fill_pixels) = self.draw_points(time);
         self.keyframes.push(Bitmap {
             time,
             // texture: Texture2D::from_image(&self.image),

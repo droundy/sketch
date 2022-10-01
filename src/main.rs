@@ -107,6 +107,7 @@ impl Drawing {
         }
     }
     fn move_pixels(&mut self, displacement: Vec2) {
+        self.layers[self.current].ensure_we_have_frame_at(self.time);
         self.layers[self.current].move_pixels(self.time, displacement);
     }
     fn move_chunk(
@@ -117,6 +118,7 @@ impl Drawing {
     ) {
         let w = self.width as usize;
         if moving_chunk.the_mask.is_empty() {
+            self.layers[self.current].ensure_we_have_frame_at(self.time);
             let idx = old_position.x.round() as usize + old_position.y.round() as usize * w;
             println!("Creating moving chunk from {idx}");
             *moving_chunk = MovingChunk::from_mask(

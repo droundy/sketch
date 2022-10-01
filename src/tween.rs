@@ -86,6 +86,27 @@ impl Tween {
             }
         }
     }
+
+    /// Draw this Tween to the pixel buffer
+    pub fn draw_points(&self, fraction: f32) -> (Pixels, Pixels) {
+        let mut outline = Pixels::default();
+        let mut fill = Pixels::default();
+        let w = if let Some(c) = self.chunks.first() {
+            c.w
+        } else {
+            return (outline, fill);
+        };
+        for c in self.chunks.iter() {
+            outline.extend(&c.interpolate(fraction));
+        }
+        for c in self.fill_chunks.iter() {
+            fill.extend(&c.interpolate(fraction));
+        }
+        outline.extend(&outline.compute_fill(w));
+        outline.remove(&fill);
+        outline.remove(&fill.compute_fill(w));
+        (outline, fill)
+    }
 }
 
 #[derive(Clone, Serialize, Deserialize)]
