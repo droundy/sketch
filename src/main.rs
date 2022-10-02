@@ -135,7 +135,6 @@ impl Drawing {
         }
         let offset = new_position - old_position;
         let offset = offset.x.round() as isize + offset.y.round() as isize * self.width as isize;
-        println!("offset is {offset}");
 
         // First we erase the chunk, and check whether the moved chunk is going to collide
         // with another chunk.
