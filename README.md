@@ -8,7 +8,8 @@ with an emphasis on conceptual ease.
 You can run the program using `cargo run --release`, and can optionally specify a save file name
 with `cargo run --release FILENAME`.  You can exit the program by hitting the escape key, which is
 the only keyboard command.  The drawing is saved on exit to an internal (and not necessarily stable)
-format.
+format, and an animated gif is created.  You can also hit space, to save your existing sketch and
+start a new one, or tab to cycle through your sketches.
 
 Tools are selected in the upper left.
 

@@ -1,4 +1,5 @@
 use std::borrow::Cow;
+use std::path::Path;
 use std::time::Instant;
 use std::{
     f32::consts::PI,
@@ -658,7 +659,7 @@ struct Keyframe {
 #[macroquad::main(conf)]
 async fn main() {
     let args: Vec<String> = std::env::args().collect();
-    let filename = args
+    let mut filename = args
         .get(1)
         .cloned()
         .unwrap_or_else(|| "drawing.sketch".to_owned());
@@ -698,7 +699,10 @@ async fn main() {
     let mut moving_chunk = MovingChunk::from_mask(Pixels::default());
     loop {
         // clear_background(WHITE);
-        if is_key_pressed(KeyCode::Escape) {
+        if is_key_pressed(KeyCode::Escape)
+            || is_key_pressed(KeyCode::Tab)
+            || is_key_pressed(KeyCode::Space)
+        {
             if needs_save {
                 drawing.save(&filename).ok();
             }
@@ -736,7 +740,65 @@ async fn main() {
                 t += 0.01;
                 old_pixels = buf;
             }
-            return;
+            if is_key_pressed(KeyCode::Escape) {
+                return;
+            }
+            needs_save = false;
+            moving_chunk = MovingChunk::from_mask(Pixels::default());
+            frame_images = Vec::new();
+            for t in frame_textures.drain(..) {
+                t.delete();
+            }
+            let mut dir = Path::new(&filename).parent().unwrap_or(Path::new("."));
+            println!("looking in directory {dir:?}");
+            if dir == Path::new("") {
+                dir = Path::new(".");
+            }
+            let mut files = dir
+                .read_dir()
+                .unwrap()
+                .flat_map(|e| e.ok())
+                .flat_map(|e| e.file_name().into_string().ok())
+                .filter(|f| f.ends_with(".json"))
+                .collect::<Vec<_>>();
+            files.sort();
+            if files.len() < 2 || is_key_pressed(KeyCode::Space) {
+                files = Vec::new();
+            }
+            if let Ok(i) = files.binary_search(&filename) {
+                for i in (i + 1..files.len()).chain(0..i) {
+                    filename = files[i].clone();
+                    println!("Opening file {filename}");
+                    if let Some(d) =
+                        Drawing::open(&filename, &mut frame_images, &mut frame_textures)
+                    {
+                        drawing = d;
+                        assert_eq!(width, drawing.width as usize);
+                        assert_eq!(height, drawing.height as usize);
+                        break;
+                    }
+                }
+            } else {
+                let mut i = 0;
+                let mut f = dir.join(format!("sketch-{i:03x}.json"));
+                while f.exists() {
+                    i += 1;
+                    f = dir.join(format!("sketch-{i:03x}.json"));
+                }
+                filename = f.to_str().unwrap().to_string();
+                drawing = Drawing {
+                    am_animating: false,
+                    am_dragging_layer: None,
+                    am_selecting_fill: false,
+                    time: 0.0,
+                    current: 0,
+                    tool: Tool::BigPen,
+                    width: screen_width() as u16,
+                    height: screen_height() as u16,
+                    layers: vec![Layer::new(0.0)],
+                    keyframes: vec![Keyframe { time: 0.0 }],
+                };
+            }
         }
         if drawing.am_animating {
             drawing.time = (started.elapsed().as_secs_f32() * 0.2) % 1.0;
