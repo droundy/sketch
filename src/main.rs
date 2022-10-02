@@ -154,7 +154,6 @@ impl Drawing {
         }
         if !need_to_not_move {
             // We can offset the chunk!
-            println!("I am shifting.");
             *moving_chunk = shifted;
         }
         // Now draw the chunk in its new (or maybe old?) position.
@@ -463,10 +462,10 @@ impl Drawing {
         self.draw_tool(Tool::LittlePen, WIDTH * 0.5, y + HEIGHT * 1.5, true);
         outline(y + 2.0 * HEIGHT, self.tool == Tool::Eraser);
         self.draw_tool(Tool::Eraser, WIDTH * 0.5, y + HEIGHT * 2.5, true);
-        outline(y + 3.0 * HEIGHT, self.tool == Tool::Move);
-        self.draw_tool(Tool::Move, WIDTH * 0.5, y + HEIGHT * 3.5, true);
-        outline(y + 4.0 * HEIGHT, self.tool == Tool::MoveChunk);
-        self.draw_tool(Tool::MoveChunk, WIDTH * 0.5, y + HEIGHT * 4.5, true);
+        // outline(y + 3.0 * HEIGHT, self.tool == Tool::Move);
+        // self.draw_tool(Tool::Move, WIDTH * 0.5, y + HEIGHT * 3.5, true);
+        outline(y + 3.0 * HEIGHT, self.tool == Tool::MoveChunk);
+        self.draw_tool(Tool::MoveChunk, WIDTH * 0.5, y + HEIGHT * 3.5, true);
         let (x, y) = mouse_position();
         if let Some(original_layer) = self.am_dragging_layer {
             if is_mouse_button_released(MouseButton::Left) {
@@ -524,9 +523,9 @@ impl Drawing {
                     self.tool = Tool::LittlePen;
                 } else if y == 2 {
                     self.tool = Tool::Eraser;
+                // } else if y == 3 {
+                //     self.tool = Tool::Move;
                 } else if y == 3 {
-                    self.tool = Tool::Move;
-                } else if y == 4 {
                     self.tool = Tool::MoveChunk;
                 } else if y == bottom_layer_index - self.layers.len() {
                     self.layers.push(Layer::new(self.time));
