@@ -87,7 +87,9 @@ impl Layer {
             }
             if self.fill_color[3] > 0 {
                 for p in k.fill_pixels.iter() {
-                    img[p] = self.fill_color;
+                    if let Some(i) = img.get_mut(p) {
+                        *i = self.fill_color;
+                    }
                 }
             }
         }
