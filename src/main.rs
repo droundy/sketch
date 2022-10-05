@@ -701,6 +701,8 @@ async fn main() {
         // clear_background(WHITE);
         if is_key_pressed(KeyCode::Escape)
             || is_key_pressed(KeyCode::Tab)
+            || is_key_pressed(KeyCode::Right)
+            || is_key_pressed(KeyCode::Left)
             || is_key_pressed(KeyCode::Space)
         {
             if needs_save {
@@ -750,6 +752,11 @@ async fn main() {
                 t.delete();
             }
             let mut dir = Path::new(&filename).parent().unwrap_or(Path::new("."));
+            let basename = Path::new(&filename)
+                .file_name()
+                .unwrap()
+                .to_string_lossy()
+                .to_string();
             println!("looking in directory {dir:?}");
             if dir == Path::new("") {
                 dir = Path::new(".");
@@ -765,8 +772,13 @@ async fn main() {
             if files.len() < 2 || is_key_pressed(KeyCode::Space) {
                 files = Vec::new();
             }
-            if let Ok(i) = files.binary_search(&filename) {
-                for i in (i + 1..files.len()).chain(0..i) {
+            if let Ok(i) = files.binary_search(&basename) {
+                let order: Vec<_> = if is_key_pressed(KeyCode::Left) {
+                    ((0..i).rev()).chain((i + 1..files.len()).rev()).collect()
+                } else {
+                    (i + 1..files.len()).chain(0..i).collect()
+                };
+                for i in order {
                     filename = files[i].clone();
                     println!("Opening file {filename}");
                     if let Some(d) =
@@ -779,6 +791,7 @@ async fn main() {
                     }
                 }
             } else {
+                println!("There is no file {basename} in {dir:?}");
                 let mut i = 0;
                 let mut f = dir.join(format!("sketch-{i:03x}.json"));
                 while f.exists() {
