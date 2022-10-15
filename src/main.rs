@@ -145,7 +145,6 @@ impl Drawing {
         for which in self.current..self.layers.len() {
             let l = &mut self.layers[which];
             if !moving_chunk.chunks(which).is_empty() {
-                l.ensure_we_have_frame_at(self.time);
                 l.erase_pixels(self.time, moving_chunk.chunks(which));
             }
             let pixels = l.closest_points(self.time);

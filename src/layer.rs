@@ -313,11 +313,21 @@ impl Layer {
         self.keyframes[i].pixels.extend(pixels);
         self.compute_fill(i);
     }
-    pub fn get_chunk(&self, time: f32, selected: &Pixels) -> Pixels {
+    pub fn get_chunk(&mut self, time: f32, selected: &Pixels) -> Pixels {
         let i = self.closest_frame(time);
-        self.keyframes[i]
-            .pixels
-            .contiguous_with(self.width, selected)
+        if self.keyframes[i].time != time {
+            let (points, fill) = self.draw_points(time);
+            if points.borders(selected) || fill.borders(selected) {
+                self.ensure_we_have_frame_at(time);
+                self.get_chunk(time, selected)
+            } else {
+                Pixels::default()
+            }
+        } else {
+            self.keyframes[i]
+                .pixels
+                .contiguous_with(self.width, selected)
+        }
     }
     pub fn get_filled_chunk(&self, time: f32, selected: &Pixels) -> Pixels {
         let i = self.closest_frame(time);
