@@ -27,23 +27,62 @@ impl Tween {
         let mut after_chunks = Chunk::find(w, after);
         after_chunks.sort_by(|a, b| b.area.cmp(&a.area));
 
-        let nchunks = std::cmp::min(before_chunks.len(), after_chunks.len());
-        if nchunks == 0 {
-            return Tween {
-                chunks: Vec::new(),
-                fill_chunks: Vec::new(),
-            };
-        }
-        // FIXME this is a hokwy way to pair up the chunks.
-        for _ in 0..1000 {
-            let i = rand::random::<usize>() % nchunks;
-            let j = rand::random::<usize>() % nchunks;
-            let v_before = before_chunks[i].center - before_chunks[j].center;
-            let v_after = after_chunks[i].center - after_chunks[j].center;
-            if v_after.dot(v_before) < 0.0 {
-                after_chunks.swap(i, j);
+        let mut before_matched = Vec::new();
+        let mut after_matched = Vec::new();
+        // First match up any chunks that exist unchanged before and after
+        for b in (0..before_chunks.len()).rev() {
+            for a in 0..after_chunks.len() {
+                if before_chunks[b].points == after_chunks[a].points {
+                    before_matched.push(before_chunks.remove(b));
+                    after_matched.push(after_chunks.remove(a));
+                    break;
+                }
             }
         }
+        // Then match up chunks that have only been moved but not changed.
+        for b in (0..before_chunks.len()).rev() {
+            if before_chunks[b + 1..]
+                .iter()
+                .filter(|c| c.shifted_eq(&before_chunks[b]))
+                .next()
+                .is_none()
+                && after_chunks
+                    .iter()
+                    .filter(|c| c.shifted_eq(&before_chunks[b]))
+                    .count()
+                    == 1
+            {
+                for a in 0..after_chunks.len() {
+                    if before_chunks[b].shifted_eq(&after_chunks[a]) {
+                        before_matched.push(before_chunks.remove(b));
+                        after_matched.push(after_chunks.remove(a));
+                        break;
+                    }
+                }
+            }
+        }
+
+        let nchunks = std::cmp::min(before_chunks.len(), after_chunks.len());
+        while before_chunks.len() > nchunks {
+            before_chunks.pop();
+        }
+        while after_chunks.len() > nchunks {
+            after_chunks.pop();
+        }
+        if nchunks != 0 {
+            // FIXME this is a hokwy way to pair up the chunks.
+            for _ in 0..10000 {
+                let i = rand::random::<usize>() % nchunks;
+                let j = rand::random::<usize>() % nchunks;
+                let v_before = before_chunks[i].center - before_chunks[j].center;
+                let v_after = after_chunks[i].center - after_chunks[j].center;
+                if v_after.dot(v_before) < 0.0 {
+                    after_chunks.swap(i, j);
+                }
+            }
+        }
+        before_chunks.extend(before_matched);
+        after_chunks.extend(after_matched);
         for (before, after) in before_chunks.into_iter().zip(after_chunks.into_iter()) {
             let before_fill: Pixels = before.points.compute_fill(w);
             let after_fill: Pixels = after.points.compute_fill(w);
@@ -381,6 +420,10 @@ impl Chunk {
             minor,
             axis,
         }
+    }
+
+    fn shifted_eq(&self, other: &Chunk) -> bool {
+        self.points.shifted_eq(&other.points)
     }
 }
 

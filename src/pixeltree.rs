@@ -159,6 +159,22 @@ impl Pixels {
             })
             .collect();
     }
+    pub fn shifted_eq(&self, other: &Pixels) -> bool {
+        if self.ranges.len() != other.ranges.len() {
+            return false;
+        }
+        if self.ranges.is_empty() {
+            return true;
+        }
+        let offset = self.ranges.iter().next().unwrap().0.start
+            - other.ranges.iter().next().unwrap().0.start;
+        for (rself, rother) in self.ranges.iter().zip(other.ranges.iter()) {
+            if rself.0.length != rother.0.length || rself.0.start != rother.0.start + offset {
+                return false;
+            }
+        }
+        true
+    }
     pub fn insert(&mut self, elem: usize) {
         self.insert_borders(Borders(Overlaps {
             start: elem as i32,

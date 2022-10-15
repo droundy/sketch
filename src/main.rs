@@ -784,10 +784,15 @@ async fn main() {
                     if let Some(d) =
                         Drawing::open(&filename, &mut frame_images, &mut frame_textures)
                     {
-                        drawing = d;
-                        assert_eq!(width, drawing.width as usize);
-                        assert_eq!(height, drawing.height as usize);
-                        break;
+                        if width == d.width as usize && height == d.height as usize {
+                            drawing = d;
+                            break;
+                        } else {
+                            println!(
+                                "Unable to use file {filename} because it is {} x {} rather than {width} x {height}",
+                                d.width, d.height
+                            );
+                        }
                     }
                 }
             } else {
