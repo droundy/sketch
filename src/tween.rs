@@ -17,8 +17,6 @@ impl Tween {
                 chunks_alternating_fill: Vec::new(),
             };
         }
-        let mut chunks = Vec::new();
-
         let before_copy = before.clone();
         let after_copy = after.clone();
 
@@ -26,11 +24,6 @@ impl Tween {
         before_chunks.sort_by(|a, b| b.area.cmp(&a.area));
         let mut after_chunks = Chunk::find(w, after);
         after_chunks.sort_by(|a, b| b.area.cmp(&a.area));
-        println!(
-            "I have {} chunks before and {} chunks after",
-            before_chunks.len(),
-            after_chunks.len()
-        );
 
         let mut before_matched = Vec::new();
         let mut after_matched = Vec::new();
@@ -88,23 +81,17 @@ impl Tween {
         }
         before_chunks.extend(before_matched);
         after_chunks.extend(after_matched);
-        for (before, after) in before_chunks
-            .clone()
-            .into_iter()
-            .zip(after_chunks.clone().into_iter())
-        {
-            chunks.push(ChunkTween::new(w, before, after));
-        }
-        let mut chunks_alternating_fill = vec![chunks];
+        let mut chunks_alternating_fill = vec![Vec::new()];
         for (before, after) in before_chunks.into_iter().zip(after_chunks.into_iter()) {
             let mut before_fill: Pixels = before.points.compute_fill(w);
-            println!("before_fill had {}", before_fill.count());
             before_fill.remove(&before_copy);
-            println!("after removing before_fill has  {}", before_fill.count());
             let mut after_fill: Pixels = after.points.compute_fill(w);
             after_fill.remove(&after_copy);
+            let main_tween = ChunkTween::new(w, before, after);
+            chunks_alternating_fill[0].push(main_tween);
             if !before_fill.is_empty() && !after_fill.is_empty() {
                 let tween_fill = Tween::new(w, before_fill, after_fill);
+                // let tween_fill = Tween::with_transform(w, before_fill, after_fill);
                 while chunks_alternating_fill.len() < tween_fill.chunks_alternating_fill.len() + 1 {
                     chunks_alternating_fill.push(Vec::new());
                 }
@@ -255,13 +242,6 @@ impl ChunkTween {
             i = i % before_outline.len();
             j = j % after_outline.len();
         }
-
-        println!(
-            "Outline gave {} connections between {} and {} pixels",
-            connections.len(),
-            before_outline.len(),
-            after_outline.len()
-        );
 
         connections.sort();
         connections.dedup();
