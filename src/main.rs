@@ -709,8 +709,11 @@ async fn main() {
             if needs_save {
                 drawing.save(&filename).ok();
             }
-            let mut dir = Path::new(&filename).parent().unwrap_or(Path::new("."));
-            std::fs::create_dir_all(dir).expect("Unable to create sketch directory!");
+            let mut dir = Path::new(&filename)
+                .parent()
+                .unwrap_or(Path::new("."))
+                .to_owned();
+            std::fs::create_dir_all(&dir).expect("Unable to create sketch directory!");
             let gifname = format!("{filename}.gif");
             let mut image = std::fs::File::create(&gifname).unwrap();
             let mut color_map = Vec::with_capacity(drawing.layers.len() * 6);
@@ -761,7 +764,7 @@ async fn main() {
                 .to_string();
             println!("looking in directory {dir:?}");
             if dir == Path::new("") {
-                dir = Path::new(".");
+                dir = Path::new(".").to_owned();
             }
             let mut files = dir
                 .read_dir()
@@ -781,7 +784,7 @@ async fn main() {
                     (i + 1..files.len()).chain(0..i).collect()
                 };
                 for i in order {
-                    filename = files[i].clone();
+                    filename = dir.join(&files[i]).to_string_lossy().to_string();
                     println!("Opening file {filename}");
                     if let Some(d) =
                         Drawing::open(&filename, &mut frame_images, &mut frame_textures)
