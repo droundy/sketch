@@ -181,7 +181,9 @@ impl Layer {
             let tween = self.tweens.get_mut(&(before, after)).unwrap();
             let fraction = (time - self.keyframes[before].time)
                 / (self.keyframes[after].time - self.keyframes[before].time);
-            tween.draw_points(fraction)
+            let points = tween.draw_points(fraction);
+            let fill = points.compute_fill(self.width);
+            (points, fill)
         }
     }
 

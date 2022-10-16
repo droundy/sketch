@@ -343,6 +343,10 @@ impl Pixels {
         }
         inside
     }
+
+    pub fn count(&self) -> usize {
+        self.ranges.iter().map(|r| r.0.length as usize).sum()
+    }
 }
 
 impl FromIterator<usize> for Pixels {

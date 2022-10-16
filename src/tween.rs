@@ -7,25 +7,30 @@ use serde::{Deserialize, Serialize};
 /// A connection between two keyframes.
 #[derive(Clone, Serialize, Deserialize)]
 pub struct Tween {
-    chunks: Vec<ChunkTween>,
-    fill_chunks: Vec<ChunkTween>,
+    chunks_alternating_fill: Vec<Vec<ChunkTween>>,
 }
 
 impl Tween {
     pub fn new(w: usize, before: Pixels, after: Pixels) -> Self {
         if before.is_empty() || after.is_empty() {
             return Tween {
-                chunks: Vec::new(),
-                fill_chunks: Vec::new(),
+                chunks_alternating_fill: Vec::new(),
             };
         }
         let mut chunks = Vec::new();
-        let mut fill_chunks = Vec::new();
+
+        let before_copy = before.clone();
+        let after_copy = after.clone();
 
         let mut before_chunks = Chunk::find(w, before);
         before_chunks.sort_by(|a, b| b.area.cmp(&a.area));
         let mut after_chunks = Chunk::find(w, after);
         after_chunks.sort_by(|a, b| b.area.cmp(&a.area));
+        println!(
+            "I have {} chunks before and {} chunks after",
+            before_chunks.len(),
+            after_chunks.len()
+        );
 
         let mut before_matched = Vec::new();
         let mut after_matched = Vec::new();
@@ -83,45 +88,43 @@ impl Tween {
         }
         before_chunks.extend(before_matched);
         after_chunks.extend(after_matched);
+        for (before, after) in before_chunks
+            .clone()
+            .into_iter()
+            .zip(after_chunks.clone().into_iter())
+        {
+            chunks.push(ChunkTween::new(w, before, after));
+        }
+        let mut chunks_alternating_fill = vec![chunks];
         for (before, after) in before_chunks.into_iter().zip(after_chunks.into_iter()) {
-            let before_fill: Pixels = before.points.compute_fill(w);
-            let after_fill: Pixels = after.points.compute_fill(w);
-            if after_fill.is_empty() || before_fill.is_empty() {
-                chunks.push(ChunkTween::new(w, before, after));
-            } else {
+            let mut before_fill: Pixels = before.points.compute_fill(w);
+            println!("before_fill had {}", before_fill.count());
+            before_fill.remove(&before_copy);
+            println!("after removing before_fill has  {}", before_fill.count());
+            let mut after_fill: Pixels = after.points.compute_fill(w);
+            after_fill.remove(&after_copy);
+            if !before_fill.is_empty() && !after_fill.is_empty() {
                 let tween_fill = Tween::new(w, before_fill, after_fill);
-                chunks.push(ChunkTween::new(w, before, after));
-                fill_chunks.extend(tween_fill.chunks);
-                chunks.extend(tween_fill.fill_chunks);
+                while chunks_alternating_fill.len() < tween_fill.chunks_alternating_fill.len() + 1 {
+                    chunks_alternating_fill.push(Vec::new());
+                }
+                for (c, add) in chunks_alternating_fill
+                    .iter_mut()
+                    .skip(1)
+                    .zip(tween_fill.chunks_alternating_fill.into_iter())
+                {
+                    c.extend(add);
+                }
             }
         }
         Tween {
-            chunks,
-            fill_chunks,
+            chunks_alternating_fill,
         }
     }
 
     /// Draw this Tween to the pixel buffer
     pub fn draw(&self, fraction: f32, pixels: &mut [bool]) {
-        let w = if let Some(c) = self.chunks.first() {
-            c.w
-        } else {
-            return;
-        };
-        let mut outline = Pixels::default();
-        let mut fill = Pixels::default();
-        for c in self.chunks.iter() {
-            outline.extend(&c.interpolate(fraction));
-        }
-        let mut final_pixels = outline.clone();
-        for c in self.fill_chunks.iter() {
-            fill.extend(&c.interpolate(fraction));
-        }
-        final_pixels.extend(&outline.compute_fill(w));
-        final_pixels.remove(&fill);
-        final_pixels.remove(&fill.compute_fill(w));
-        final_pixels.extend(&outline);
-        for p in final_pixels.iter() {
+        for p in self.draw_points(fraction).iter() {
             if let Some(x) = pixels.get_mut(p) {
                 *x = true;
             }
@@ -129,26 +132,33 @@ impl Tween {
     }
 
     /// Draw this Tween to the pixel buffer
-    pub fn draw_points(&self, fraction: f32) -> (Pixels, Pixels) {
-        let mut outline = Pixels::default();
-        let mut fill = Pixels::default();
-        let w = if let Some(c) = self.chunks.first() {
+    pub fn draw_points(&self, fraction: f32) -> Pixels {
+        let mut final_pixels = Pixels::default();
+        let w = if let Some(Some(c)) = self.chunks_alternating_fill.first().map(|x| x.first()) {
             c.w
         } else {
-            return (outline, fill);
+            return final_pixels;
         };
-        for c in self.chunks.iter() {
-            outline.extend(&c.interpolate(fraction));
+        for chunk_and_fill in self.chunks_alternating_fill.chunks(2) {
+            let mut outline = Pixels::default();
+            let mut fill = Pixels::default();
+            for c in chunk_and_fill[0].iter() {
+                outline.extend(&c.interpolate(fraction));
+            }
+            let mut points = outline.clone();
+            points.extend(&outline.compute_fill(w));
+            if let Some(filltweens) = chunk_and_fill.get(1) {
+                // This means we are not the last odd chunk, and need to remove our fill.
+                for c in filltweens.iter() {
+                    fill.extend(&c.interpolate(fraction));
+                }
+                points.remove(&fill);
+                points.remove(&fill.compute_fill(w));
+                points.extend(&outline);
+            }
+            final_pixels.extend(&points)
         }
-        let mut final_pixels = outline.clone();
-        for c in self.fill_chunks.iter() {
-            fill.extend(&c.interpolate(fraction));
-        }
-        final_pixels.extend(&outline.compute_fill(w));
-        final_pixels.remove(&fill);
-        final_pixels.remove(&fill.compute_fill(w));
-        final_pixels.extend(&outline);
-        (final_pixels, fill)
+        final_pixels
     }
 }
 
@@ -293,6 +303,7 @@ impl ChunkTween {
     }
 }
 
+#[derive(Clone)]
 pub struct Chunk {
     points: Pixels,
     center: Vec2,
