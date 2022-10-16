@@ -707,6 +707,8 @@ async fn main() {
             if needs_save {
                 drawing.save(&filename).ok();
             }
+            let mut dir = Path::new(&filename).parent().unwrap_or(Path::new("."));
+            std::fs::create_dir_all(dir).expect("Unable to create sketch directory!");
             let gifname = format!("{filename}.gif");
             let mut image = std::fs::File::create(&gifname).unwrap();
             let mut color_map = Vec::with_capacity(drawing.layers.len() * 6);
@@ -750,7 +752,6 @@ async fn main() {
             for t in frame_textures.drain(..) {
                 t.delete();
             }
-            let mut dir = Path::new(&filename).parent().unwrap_or(Path::new("."));
             let basename = Path::new(&filename)
                 .file_name()
                 .unwrap()
