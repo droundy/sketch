@@ -113,13 +113,15 @@ impl Tween {
         for c in self.chunks.iter() {
             outline.extend(&c.interpolate(fraction));
         }
+        let mut final_pixels = outline.clone();
         for c in self.fill_chunks.iter() {
             fill.extend(&c.interpolate(fraction));
         }
-        outline.extend(&outline.compute_fill(w));
-        outline.remove(&fill);
-        outline.remove(&fill.compute_fill(w));
-        for p in outline.iter() {
+        final_pixels.extend(&outline.compute_fill(w));
+        final_pixels.remove(&fill);
+        final_pixels.remove(&fill.compute_fill(w));
+        final_pixels.extend(&outline);
+        for p in final_pixels.iter() {
             if let Some(x) = pixels.get_mut(p) {
                 *x = true;
             }
@@ -138,13 +140,15 @@ impl Tween {
         for c in self.chunks.iter() {
             outline.extend(&c.interpolate(fraction));
         }
+        let mut final_pixels = outline.clone();
         for c in self.fill_chunks.iter() {
             fill.extend(&c.interpolate(fraction));
         }
-        outline.extend(&outline.compute_fill(w));
-        outline.remove(&fill);
-        outline.remove(&fill.compute_fill(w));
-        (outline, fill)
+        final_pixels.extend(&outline.compute_fill(w));
+        final_pixels.remove(&fill);
+        final_pixels.remove(&fill.compute_fill(w));
+        final_pixels.extend(&outline);
+        (final_pixels, fill)
     }
 }
 

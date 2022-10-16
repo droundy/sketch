@@ -90,7 +90,9 @@ impl Drawing {
         Some(drawing)
     }
     fn save(&self, path: &str) -> Result<(), std::io::Error> {
-        std::fs::write("drawing.json", serde_json::to_string(self).unwrap())?;
+        if let Some(dir) = Path::new(&path).parent() {
+            std::fs::create_dir_all(dir)?;
+        }
         if path.ends_with(".json") {
             std::fs::write(path, serde_json::to_string(self).unwrap())
         } else {
