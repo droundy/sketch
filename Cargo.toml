@@ -1,5 +1,5 @@
 [package]
-name = "sketch-space-time"
+name = "color-splotch"
 version = "0.1.0"
 edition = "2021"
 description = "A drawing and animation program for children"
