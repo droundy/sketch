@@ -491,7 +491,6 @@ dependencies = [
  "rand",
  "serde",
  "serde_json",
- "tinyset",
 ]
 
 [[package]]
@@ -512,16 +511,6 @@ dependencies = [
  "proc-macro2",
  "quote",
  "unicode-ident",
-]
-
-[[package]]
-name = "tinyset"
-version = "0.4.14"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "84e68c9713815f4ef02ecbe7d39d225e71b0e64708605d57fa27398771011741"
-dependencies = [
- "rand",
- "serde",
 ]
 
 [[package]]
