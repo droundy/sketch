@@ -49,7 +49,9 @@ This crate could really use a better name.  I will appreciate any suggestions!
 
 # Installing Color Splotch
 
-How to install Color Splotch.
+In most cases, you can install Color Splotch by downloading the appropriate
+release from [the releases page](releases).  Currently we compile for windows,
+and for Mac with either Intel or Apple chips.
 
 # From source
 
@@ -61,7 +63,3 @@ and then run it from the command line as
 ```
 $ color-splotch
 ```
-
-# Mac
-
-On the mac you can download the release image and install as you would any other Mac app.  (Once I have created the images.)
