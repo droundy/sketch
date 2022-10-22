@@ -14,6 +14,3 @@ cargo build --release --target x86_64-pc-windows-gnu
 rm -f release/color-splotch.exe
 cp target/x86_64-pc-windows-gnu/release/color-splotch.exe release/
 
-rustup target add x86_64-apple-darwin aarch64-apple-darwin
-cargo bundle --release --format osx --target x86_64-apple-darwin
-cargo bundle --release --format osx --target aarch64-apple-darwin
