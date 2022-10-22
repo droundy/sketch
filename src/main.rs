@@ -376,11 +376,11 @@ impl Drawing {
         let fy = (pos.1 + h - sheight) / h;
         if let Some(c) = color_selector_color(fx, fy) {
             if is_mouse_button_pressed(MouseButton::Left) {
-                AM_DRAGGING.store(true, std::sync::atomic::Ordering::Relaxed);
+                AM_DRAGGING.store(true, Ordering::Relaxed);
             } else if !is_mouse_button_down(MouseButton::Left) {
-                AM_DRAGGING.store(false, std::sync::atomic::Ordering::Relaxed);
+                AM_DRAGGING.store(false, Ordering::Relaxed);
             }
-            if AM_DRAGGING.load(std::sync::atomic::Ordering::Relaxed) {
+            if AM_DRAGGING.load(Ordering::Relaxed) {
                 if self.am_selecting_fill {
                     self.layers[self.current].fill_color = c;
                 } else {
@@ -389,7 +389,13 @@ impl Drawing {
             }
             true
         } else {
-            AM_DRAGGING.load(std::sync::atomic::Ordering::Relaxed)
+            let dragging = AM_DRAGGING.load(Ordering::Relaxed);
+            if dragging && !is_mouse_button_down(MouseButton::Left) {
+                AM_DRAGGING.store(false, Ordering::Relaxed);
+                false
+            } else {
+                dragging
+            }
         }
     }
     fn layer_selector(&mut self) -> bool {
