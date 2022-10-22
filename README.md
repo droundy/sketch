@@ -50,7 +50,7 @@ This crate could really use a better name.  I will appreciate any suggestions!
 # Installing Color Splotch
 
 In most cases, you can install Color Splotch by downloading the appropriate
-release from [the releases page](releases).  Currently we compile for windows,
+release from [the releases page](https://github.com/droundy/sketch/releases).  Currently we compile for windows,
 and for Mac with either Intel or Apple chips.
 
 # From source
