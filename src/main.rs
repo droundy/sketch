@@ -660,10 +660,23 @@ struct Keyframe {
 #[macroquad::main(conf)]
 async fn main() {
     let args: Vec<String> = std::env::args().collect();
-    let mut filename = args
-        .get(1)
-        .cloned()
-        .unwrap_or_else(|| "drawing.sketch".to_owned());
+    let (dir, mut filename) = if let Some(arg) = args.get(1) {
+        let filename = arg.clone();
+        let mut dir = Path::new(&filename)
+            .parent()
+            .unwrap_or(Path::new("."))
+            .to_owned();
+        if dir == Path::new("") {
+            dir = Path::new(".").to_owned();
+        }
+        (dir, filename)
+    } else {
+        let dir = dirs::picture_dir().unwrap_or(Path::new(".").to_owned());
+        let filename = new_filename(&dir);
+        (dir, filename)
+    };
+    std::fs::create_dir_all(&dir).expect("Unable to create sketch directory!");
+
     let mut bitmap = Image::gen_image_color(
         screen_width() as u16,
         screen_height() as u16,
@@ -709,11 +722,6 @@ async fn main() {
             if needs_save {
                 drawing.save(&filename).ok();
             }
-            let mut dir = Path::new(&filename)
-                .parent()
-                .unwrap_or(Path::new("."))
-                .to_owned();
-            std::fs::create_dir_all(&dir).expect("Unable to create sketch directory!");
             let gifname = format!("{filename}.gif");
             let mut image = std::fs::File::create(&gifname).unwrap();
             let mut color_map = Vec::with_capacity(drawing.layers.len() * 6);
@@ -763,9 +771,6 @@ async fn main() {
                 .to_string_lossy()
                 .to_string();
             println!("looking in directory {dir:?}");
-            if dir == Path::new("") {
-                dir = Path::new(".").to_owned();
-            }
             let mut files = dir
                 .read_dir()
                 .unwrap()
@@ -802,13 +807,7 @@ async fn main() {
                 }
             } else {
                 println!("There is no file {basename} in {dir:?}");
-                let mut i = 0;
-                let mut f = dir.join(format!("sketch-{i:03x}.json"));
-                while f.exists() {
-                    i += 1;
-                    f = dir.join(format!("sketch-{i:03x}.json"));
-                }
-                filename = f.to_str().unwrap().to_string();
+                filename = new_filename(&dir);
                 drawing = Drawing {
                     am_animating: false,
                     am_dragging_layer: None,
@@ -1013,4 +1012,14 @@ impl MovingChunk {
             &self.empty
         }
     }
+}
+
+fn new_filename(dir: &Path) -> String {
+    let mut i = 0;
+    let mut f = dir.join(format!("sketch-{i:03x}.json"));
+    while f.exists() {
+        i += 1;
+        f = dir.join(format!("sketch-{i:03x}.json"));
+    }
+    f.to_str().unwrap().to_string()
 }
