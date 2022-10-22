@@ -728,7 +728,11 @@ async fn main() {
             if needs_save {
                 drawing.save(&filename).ok();
             }
-            let gifname = format!("{filename}.gif");
+            let gifname = if filename.ends_with(".json") {
+                format!("{}.gif", &filename[..filename.len() - 5])
+            } else {
+                format!("{filename}.gif")
+            };
             let mut image = std::fs::File::create(&gifname).unwrap();
             let mut color_map = Vec::with_capacity(drawing.layers.len() * 6);
             color_map.extend([0, 0, 0]);
