@@ -3,13 +3,17 @@ name = "color-splotch"
 version = "0.1.0"
 edition = "2021"
 description = "A drawing and animation program for children"
+license = "GPLv2+"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[profile.release]
+lto = "thin"
 
 [dependencies]
 
 ordered-float = "3.0.0"
-macroquad = "0.3.0"
+macroquad = { version = "0.3.0", default-features = false }
 rand = "0.8.5"
 serde = { version = "1.0", features = ["derive"] }
 glam = { version = "0.21.3", features = ["serde"] }

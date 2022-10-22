@@ -1,4 +1,4 @@
-# sketch-space-time
+# color-splotch
 
 This is a drawing and animation program for children (specifically for one five-year-old child),
 with an emphasis on conceptual ease.
@@ -46,3 +46,22 @@ relatively easy to change the colors and redefine a layer.
 ### Naming
 
 This crate could really use a better name.  I will appreciate any suggestions!
+
+# Installing Color Splotch
+
+How to install Color Splotch.
+
+# From source
+
+If you are a rust developer, you can install Color Splotch with
+```
+$ cargo install color-splotch
+```
+and then run it from the command line as
+```
+$ color-splotch
+```
+
+# Mac
+
+On the mac you can download the release image and install as you would any other Mac app.  (Once I have created the images.)

@@ -785,10 +785,14 @@ async fn main() {
                 .filter(|f| f.ends_with(".json"))
                 .collect::<Vec<_>>();
             files.sort();
+            println!("The files are {files:?}");
             if files.len() < 2 || is_key_pressed(KeyCode::Space) {
                 files = Vec::new();
             }
-            if let Ok(i) = files.binary_search(&basename) {
+            filename = "".to_string();
+            if !files.is_empty() {
+                let i = files.binary_search(&basename).unwrap_or_default();
+                println!("Found our file as number {i}");
                 let order: Vec<_> = if is_key_pressed(KeyCode::Left) {
                     ((0..i).rev()).chain((i + 1..files.len()).rev()).collect()
                 } else {
@@ -811,8 +815,9 @@ async fn main() {
                         }
                     }
                 }
-            } else {
-                println!("There is no file {basename} in {dir:?}");
+            }
+            if filename == "" {
+                println!("Creating a new file!");
                 filename = new_filename(&dir);
                 drawing = Drawing {
                     am_animating: false,
