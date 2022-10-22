@@ -375,7 +375,7 @@ impl Layer {
 }
 
 fn random_color() -> [u8; 4] {
-    [rand::random(), rand::random(), rand::random(), 255]
+    [macroquad::rand::rand() as u8, macroquad::rand::rand() as u8, macroquad::rand::rand() as u8, 255]
 }
 
 pub fn clamp(min: f32, max: f32, val: f32) -> f32 {

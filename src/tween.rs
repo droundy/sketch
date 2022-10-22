@@ -1,4 +1,4 @@
-use std::{ops::Mul, time::Instant};
+use std::ops::Mul;
 
 use crate::pixeltree::Pixels;
 use glam::Vec2;
@@ -70,8 +70,8 @@ impl Tween {
         if nchunks != 0 {
             // FIXME this is a hokwy way to pair up the chunks.
             for _ in 0..10000 {
-                let i = rand::random::<usize>() % nchunks;
-                let j = rand::random::<usize>() % nchunks;
+                let i = macroquad::rand::rand() as usize % nchunks;
+                let j = macroquad::rand::rand() as usize % nchunks;
                 let v_before = before_chunks[i].center - before_chunks[j].center;
                 let v_after = after_chunks[i].center - after_chunks[j].center;
                 if v_after.dot(v_before) < 0.0 {
@@ -259,7 +259,6 @@ impl ChunkTween {
         assert!(fraction <= 1.0);
         let reverse_transform = (1.0 - fraction) * self.transform.reverse();
         let transform = fraction * self.transform;
-        let start = Instant::now();
         let mut pixels = Pixels::default();
         for &(b, a) in self.connections.iter() {
             let b = transform * Vec2::new((b % self.w) as f32, (b / self.w) as f32);
@@ -271,13 +270,6 @@ impl ChunkTween {
             pixels.insert(idx0 + 1);
             pixels.insert(idx0 + w);
             pixels.insert(idx0 + w + 1);
-        }
-        if start.elapsed().as_secs_f64() > 6e-3 {
-            println!(
-                "Number connections is {}, took {:.2} ms",
-                self.connections.len(),
-                start.elapsed().as_secs_f64() * 1e3
-            );
         }
         pixels
     }
