@@ -724,6 +724,7 @@ async fn main() {
             || is_key_pressed(KeyCode::Right)
             || is_key_pressed(KeyCode::Left)
             || is_key_pressed(KeyCode::Space)
+            || is_key_pressed(KeyCode::Q)
         {
             if needs_save {
                 drawing.save(&filename).ok();
@@ -766,7 +767,7 @@ async fn main() {
                 t += 0.01;
                 old_pixels = buf;
             }
-            if is_key_pressed(KeyCode::Escape) {
+            if is_key_pressed(KeyCode::Escape) || is_key_pressed(KeyCode::Q) {
                 return;
             }
             needs_save = false;
