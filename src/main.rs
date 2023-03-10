@@ -667,15 +667,19 @@ struct Keyframe {
 async fn main() {
     let args: Vec<String> = std::env::args().collect();
     let (dir, mut filename) = if let Some(arg) = args.get(1) {
-        let filename = arg.clone();
-        let mut dir = Path::new(&filename)
-            .parent()
-            .unwrap_or(Path::new("."))
-            .to_owned();
-        if dir == Path::new("") {
-            dir = Path::new(".").to_owned();
+        if arg.as_bytes().last() == b"/".last() {
+            (arg.into(), "sketch".to_string())
+        } else {
+            let filename = arg.clone();
+            let mut dir = Path::new(&filename)
+                .parent()
+                .unwrap_or(Path::new("."))
+                .to_owned();
+            if dir == Path::new("") {
+                dir = Path::new(".").to_owned();
+            }
+            (dir, filename)
         }
-        (dir, filename)
     } else {
         let dir = dirs::picture_dir().unwrap_or(Path::new(".").to_owned());
         let filename = new_filename(&dir);
@@ -824,6 +828,25 @@ async fn main() {
             if filename == "" {
                 println!("Creating a new file!");
                 filename = new_filename(&dir);
+                println!("dir is {}", dir.display());
+                let mut layers = vec![Layer::new(0.0)];
+                if dir.display().to_string().contains("cards") {
+                    layers[0].add_base_rectangle(520, 745);
+                    layers[0].color = [180; 4];
+                    layers[0].fill_color = [255; 4];
+                    layers.push(Layer::new(0.0));
+                    layers[1].add_base_rectangle(450, 675);
+                    layers[1].color = [240; 4];
+                    layers[1].fill_color = [255; 4];
+                } else if dir.display().to_string().contains("pieces") {
+                    layers[0].add_circle(295);
+                    layers[0].color = [0, 0, 0, 0];
+                    layers[0].fill_color = [255; 4];
+                    layers.push(Layer::new(0.0));
+                    layers[1].add_circle(225);
+                    layers[1].color = [240; 4];
+                    layers[1].fill_color = [255; 4];
+                }
                 drawing = Drawing {
                     am_animating: false,
                     am_dragging_layer: None,
@@ -833,7 +856,7 @@ async fn main() {
                     tool: Tool::BigPen,
                     width: screen_width() as u16,
                     height: screen_height() as u16,
-                    layers: vec![Layer::new(0.0)],
+                    layers,
                     keyframes: vec![Keyframe { time: 0.0 }],
                 };
             }
@@ -843,6 +866,7 @@ async fn main() {
         }
 
         for b in bitmap.get_image_data_mut().iter_mut() {
+            // Initialize the background
             *b = [20, 20, 20, 255];
         }
         for l in drawing.layers.iter_mut() {

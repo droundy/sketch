@@ -315,6 +315,42 @@ impl Layer {
         self.keyframes[i].pixels.extend(pixels);
         self.compute_fill(i);
     }
+    pub fn add_base_rectangle(&mut self, rect_width: usize, rect_height: usize) {
+        let mut pixels = Pixels::default();
+        let xmin = self.width / 2 - rect_width / 2 - 1;
+        let ymin = self.height / 2 - rect_height / 2 - 1;
+        let xmax = self.width / 2 + rect_width / 2 + 1;
+        let ymax = self.height / 2 + rect_height / 2 + 1;
+        for x in xmin..xmax + 1 {
+            pixels.insert(x + ymin * self.width);
+            pixels.insert(x + ymax * self.width);
+        }
+        for y in ymin..ymax + 1 {
+            pixels.insert(xmin + y * self.width);
+            pixels.insert(xmax + y * self.width);
+        }
+        self.keyframes[0].pixels.extend(&pixels);
+        self.compute_fill(0);
+    }
+    pub fn add_circle(&mut self, diameter: isize) {
+        let mut pixels = Pixels::default();
+        let centerx = self.width as isize / 2;
+        let centery = self.height as isize / 2;
+        let xmin = centerx - diameter / 2 - 5;
+        let ymin = centery - diameter / 2 - 5;
+        let r2min = (diameter / 2).pow(2);
+        let r2max = (diameter / 2 + 4).pow(2);
+        for x in xmin..(xmin + diameter + 10) {
+            for y in ymin..(ymin + diameter + 10) {
+                let rad2 = (x - centerx).pow(2) + (y - centery).pow(2);
+                if rad2 > r2min && rad2 < r2max {
+                    pixels.insert(x as usize + y as usize * self.width);
+                }
+            }
+        }
+        self.keyframes[0].pixels.extend(&pixels);
+        self.compute_fill(0);
+    }
     pub fn get_chunk(&mut self, time: f32, selected: &Pixels) -> Pixels {
         let i = self.closest_frame(time);
         if self.keyframes[i].time != time {
