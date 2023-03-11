@@ -686,6 +686,7 @@ async fn main() {
         (dir, filename)
     };
     std::fs::create_dir_all(&dir).expect("Unable to create sketch directory!");
+    let rotate_pi = dir.display().to_string().contains("cards");
 
     let mut bitmap = Image::gen_image_color(
         screen_width() as u16,
@@ -713,7 +714,7 @@ async fn main() {
             tool: Tool::BigPen,
             width: screen_width() as u16,
             height: screen_height() as u16,
-            layers: vec![Layer::new(0.0)],
+            layers: new_layers(&dir),
             keyframes: vec![Keyframe { time: 0.0 }],
         });
     let width = drawing.width as usize;
@@ -828,25 +829,6 @@ async fn main() {
             if filename == "" {
                 println!("Creating a new file!");
                 filename = new_filename(&dir);
-                println!("dir is {}", dir.display());
-                let mut layers = vec![Layer::new(0.0)];
-                if dir.display().to_string().contains("cards") {
-                    layers[0].add_base_rectangle(520, 745);
-                    layers[0].color = [180; 4];
-                    layers[0].fill_color = [255; 4];
-                    layers.push(Layer::new(0.0));
-                    layers[1].add_base_rectangle(450, 675);
-                    layers[1].color = [240; 4];
-                    layers[1].fill_color = [255; 4];
-                } else if dir.display().to_string().contains("pieces") {
-                    layers[0].add_circle(295);
-                    layers[0].color = [0, 0, 0, 0];
-                    layers[0].fill_color = [255; 4];
-                    layers.push(Layer::new(0.0));
-                    layers[1].add_circle(225);
-                    layers[1].color = [240; 4];
-                    layers[1].fill_color = [255; 4];
-                }
                 drawing = Drawing {
                     am_animating: false,
                     am_dragging_layer: None,
@@ -856,7 +838,7 @@ async fn main() {
                     tool: Tool::BigPen,
                     width: screen_width() as u16,
                     height: screen_height() as u16,
-                    layers,
+                    layers: new_layers(&dir),
                     keyframes: vec![Keyframe { time: 0.0 }],
                 };
             }
@@ -939,6 +921,13 @@ async fn main() {
                                 && here.dot(parallel) < par_stop
                             {
                                 drawn.insert(x + y * width);
+                                if rotate_pi {
+                                    let centerx = width / 2;
+                                    let centery = height / 2;
+                                    let rotx = centerx + (centerx - x);
+                                    let roty = centery + (centery - y);
+                                    drawn.insert(rotx + roty * width);
+                                }
                             }
                         }
                     }
@@ -956,6 +945,13 @@ async fn main() {
                         if (x as f32 - pos.x).powi(2) + (y as f32 - pos.y).powi(2) < radius.powi(2)
                         {
                             drawn.insert(x + y * width);
+                            if rotate_pi {
+                                let centerx = width / 2;
+                                let centery = height / 2;
+                                let rotx = centerx + (centerx - x);
+                                let roty = centery + (centery - y);
+                                drawn.insert(rotx + roty * width);
+                            }
                         }
                         old_pos = Some(pos);
                     }
@@ -1062,4 +1058,26 @@ fn new_filename(dir: &Path) -> String {
         f = dir.join(format!("sketch-{i:03x}.json"));
     }
     f.to_str().unwrap().to_string()
+}
+
+fn new_layers(dir: &Path) -> Vec<Layer> {
+    let mut layers = vec![Layer::new(0.0)];
+    if dir.display().to_string().contains("cards") {
+        layers[0].add_base_rectangle(520, 745);
+        layers[0].color = [180; 4];
+        layers[0].fill_color = [255; 4];
+        layers.push(Layer::new(0.0));
+        layers[1].add_base_rectangle(450, 675);
+        layers[1].color = [240; 4];
+        layers[1].fill_color = [255; 4];
+    } else if dir.display().to_string().contains("pieces") {
+        layers[0].add_circle(295);
+        layers[0].color = [0, 0, 0, 0];
+        layers[0].fill_color = [255; 4];
+        layers.push(Layer::new(0.0));
+        layers[1].add_circle(225);
+        layers[1].color = [240; 4];
+        layers[1].fill_color = [255; 4];
+    }
+    layers
 }
