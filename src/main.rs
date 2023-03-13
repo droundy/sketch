@@ -723,7 +723,7 @@ struct Args {
     /// Use the large circle chit template for https://thegamegrafter.com.
     large_circle_chit: bool,
     /// Create an animated gif and exit.
-    generate_gif: bool,
+    animated_gif: bool,
 }
 
 #[macroquad::main(conf)]
@@ -765,7 +765,7 @@ async fn main() {
             layers: new_layers(&args),
             keyframes: vec![Keyframe { time: 0.0 }],
         });
-    if args.generate_gif {
+    if args.animated_gif {
         drawing.animated_gif(&filename);
         return;
     }
