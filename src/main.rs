@@ -100,6 +100,54 @@ impl Drawing {
             std::fs::write(path, bincode::serialize(self).unwrap())
         }
     }
+    fn animated_gif(&self, filename: &str) {
+        let gifname = if filename.ends_with(".json") {
+            format!("{}.gif", &filename[..filename.len() - 5])
+        } else if filename.ends_with(".gif") {
+            filename.to_string()
+        } else {
+            format!("{filename}.gif")
+        };
+        let mut image = std::fs::File::create(&gifname).unwrap();
+        let mut color_map = Vec::with_capacity(self.layers.len() * 6);
+        color_map.extend([0, 0, 0]);
+        for l in self.layers.iter() {
+            color_map.extend(&l.color[0..3]);
+            color_map.extend(&l.fill_color[0..3]);
+        }
+        let mut encoder = gif::Encoder::new(
+            &mut image,
+            self.width as u16,
+            self.height as u16,
+            &color_map,
+        )
+        .unwrap();
+        encoder.set_repeat(gif::Repeat::Infinite).unwrap();
+        let mut t = 0.0;
+        let mut old_pixels = Vec::new();
+        let mut delay = 0;
+        while t <= 1.0 {
+            let mut frame = gif::Frame::default();
+            frame.width = self.width as u16;
+            frame.height = self.height as u16;
+            let mut buf = vec![0; self.width as usize * self.height as usize];
+            for (i, l) in self.layers.clone().iter_mut().enumerate() {
+                l.draw_gif(t, 2 * i as u8 + 1, &mut buf);
+            }
+            frame.buffer = Cow::Borrowed(&buf);
+            delay += 2;
+            frame.delay = delay;
+            // Only write a new frame if something has changed.
+            if buf != old_pixels || t + 0.01 > 1.0 {
+                encoder.write_frame(&frame).unwrap();
+                delay = 0;
+            }
+            print!("\rCreating gif: {t:4.2}");
+            t += 0.01;
+            old_pixels = buf;
+        }
+    }
+
     fn pen_drew(&mut self, pixels: Pixels) {
         if self.keyframes.iter().any(|k| k.time == self.time) {
             self.layers[self.current].ensure_we_have_frame_at(self.time);
@@ -674,6 +722,8 @@ struct Args {
     mini_deck: bool,
     /// Use the large circle chit template for https://thegamegrafter.com.
     large_circle_chit: bool,
+    /// Create an animated gif and exit.
+    generate_gif: bool,
 }
 
 #[macroquad::main(conf)]
@@ -700,20 +750,6 @@ async fn main() {
     };
     std::fs::create_dir_all(&dir).expect("Unable to create sketch directory!");
 
-    let mut bitmap = Image::gen_image_color(
-        screen_width() as u16,
-        screen_height() as u16,
-        Color {
-            r: 0.0,
-            g: 0.0,
-            b: 0.0,
-            a: 0.0,
-        },
-    );
-    let texture = Texture2D::from_image(&bitmap);
-    macroquad::input::show_mouse(false);
-
-    let mut old_pos: Option<Vec2> = None;
     let mut frame_images = Vec::new();
     let mut frame_textures = Vec::new();
     let mut drawing =
@@ -729,6 +765,25 @@ async fn main() {
             layers: new_layers(&args),
             keyframes: vec![Keyframe { time: 0.0 }],
         });
+    if args.generate_gif {
+        drawing.animated_gif(&filename);
+        return;
+    }
+
+    let mut bitmap = Image::gen_image_color(
+        screen_width() as u16,
+        screen_height() as u16,
+        Color {
+            r: 0.0,
+            g: 0.0,
+            b: 0.0,
+            a: 0.0,
+        },
+    );
+    let texture = Texture2D::from_image(&bitmap);
+    macroquad::input::show_mouse(false);
+
+    let mut old_pos: Option<Vec2> = None;
     let width = drawing.width as usize;
     let height = drawing.height as usize;
     let mut started = Instant::now();
@@ -746,44 +801,7 @@ async fn main() {
             if needs_save {
                 drawing.save(&filename).ok();
             }
-            let gifname = if filename.ends_with(".json") {
-                format!("{}.gif", &filename[..filename.len() - 5])
-            } else {
-                format!("{filename}.gif")
-            };
-            let mut image = std::fs::File::create(&gifname).unwrap();
-            let mut color_map = Vec::with_capacity(drawing.layers.len() * 6);
-            color_map.extend([0, 0, 0]);
-            for l in drawing.layers.iter() {
-                color_map.extend(&l.color[0..3]);
-                color_map.extend(&l.fill_color[0..3]);
-            }
-            let mut encoder =
-                gif::Encoder::new(&mut image, width as u16, height as u16, &color_map).unwrap();
-            encoder.set_repeat(gif::Repeat::Infinite).unwrap();
-            let mut t = 0.0;
-            let mut old_pixels = Vec::new();
-            let mut delay = 0;
-            while t <= 1.0 {
-                let mut frame = gif::Frame::default();
-                frame.width = width as u16;
-                frame.height = height as u16;
-                let mut buf = vec![0; width * height];
-                for (i, l) in drawing.layers.iter_mut().enumerate() {
-                    l.draw_gif(t, 2 * i as u8 + 1, &mut buf);
-                }
-                frame.buffer = Cow::Borrowed(&buf);
-                delay += 2;
-                frame.delay = delay;
-                // Only write a new frame if something has changed.
-                if buf != old_pixels || t + 0.01 > 1.0 {
-                    encoder.write_frame(&frame).unwrap();
-                    delay = 0;
-                }
-                print!("\rCreating gif: {t:4.2}");
-                t += 0.01;
-                old_pixels = buf;
-            }
+            drawing.animated_gif(&filename);
             if is_key_pressed(KeyCode::Escape) || is_key_pressed(KeyCode::Q) {
                 return;
             }
