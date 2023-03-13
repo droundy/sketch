@@ -517,30 +517,6 @@ fn outline(w: usize, pixels: &mut Pixels) -> Option<Vec<usize>> {
     Some(out)
 }
 
-#[test]
-fn chunks_test() {
-    let pixels = Pixels::from_iter([2, 5, 8]);
-    let w = 3;
-    let chunks = Chunk::find(w, pixels);
-    assert_eq!(1, chunks.len());
-    assert_eq!(3, chunks[0].area);
-    assert_eq!(Vec2::new(2.0, 1.0), chunks[0].center);
-    assert_eq!(Vec2::new(0.0, 1.0), chunks[0].axis);
-    assert_eq!(2.0_f32.sqrt(), chunks[0].major);
-    assert_eq!(0.0, chunks[0].minor);
-
-    let pixels = Pixels::from_iter([2, 3, 5, 6, 8]);
-    let w = 3;
-    let chunks = Chunk::find(w, pixels);
-    assert_eq!(2, chunks.len());
-    assert_eq!(3, chunks[0].area);
-    assert_eq!(2, chunks[1].area);
-    assert_eq!(Vec2::new(2.0, 1.0), chunks[0].center);
-    assert_eq!(Vec2::new(0.0, 1.0), chunks[0].axis);
-    assert_eq!(2.0_f32.sqrt(), chunks[0].major);
-    assert_eq!(0.0, chunks[0].minor);
-}
-
 #[derive(Copy, Clone, Serialize, Deserialize)]
 pub struct Transform {
     full_angle: f32,

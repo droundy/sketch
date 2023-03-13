@@ -1,3 +1,4 @@
+use auto_args::AutoArgs;
 use std::borrow::Cow;
 use std::path::Path;
 use std::time::Instant;
@@ -663,10 +664,22 @@ struct Keyframe {
     time: f32,
 }
 
+#[derive(AutoArgs)]
+struct Args {
+    /// Which directory should we run in
+    path: Option<String>,
+    /// Create an image that is rotationally symmetric
+    rotate_pi: bool,
+    /// Use the mini deck template for https://thegamegrafter.com.
+    mini_deck: bool,
+    /// Use the large circle chit template for https://thegamegrafter.com.
+    large_circle_chit: bool,
+}
+
 #[macroquad::main(conf)]
 async fn main() {
-    let args: Vec<String> = std::env::args().collect();
-    let (dir, mut filename) = if let Some(arg) = args.get(1) {
+    let args = Args::from_args();
+    let (dir, mut filename) = if let Some(arg) = args.path.clone() {
         if arg.as_bytes().last() == b"/".last() {
             (arg.into(), "sketch".to_string())
         } else {
@@ -686,7 +699,6 @@ async fn main() {
         (dir, filename)
     };
     std::fs::create_dir_all(&dir).expect("Unable to create sketch directory!");
-    let rotate_pi = dir.display().to_string().contains("cards");
 
     let mut bitmap = Image::gen_image_color(
         screen_width() as u16,
@@ -714,7 +726,7 @@ async fn main() {
             tool: Tool::BigPen,
             width: screen_width() as u16,
             height: screen_height() as u16,
-            layers: new_layers(&dir),
+            layers: new_layers(&args),
             keyframes: vec![Keyframe { time: 0.0 }],
         });
     let width = drawing.width as usize;
@@ -837,8 +849,8 @@ async fn main() {
                     current: 0,
                     tool: Tool::BigPen,
                     width: screen_width() as u16,
-                    height: screen_height() as u16,
-                    layers: new_layers(&dir),
+                    height: screen_height as u16,
+                    layers: new_layers(&args),
                     keyframes: vec![Keyframe { time: 0.0 }],
                 };
             }
@@ -921,7 +933,7 @@ async fn main() {
                                 && here.dot(parallel) < par_stop
                             {
                                 drawn.insert(x + y * width);
-                                if rotate_pi {
+                                if args.rotate_pi {
                                     let centerx = width / 2;
                                     let centery = height / 2;
                                     let rotx = centerx + (centerx - x);
@@ -945,7 +957,7 @@ async fn main() {
                         if (x as f32 - pos.x).powi(2) + (y as f32 - pos.y).powi(2) < radius.powi(2)
                         {
                             drawn.insert(x + y * width);
-                            if rotate_pi {
+                            if args.rotate_pi {
                                 let centerx = width / 2;
                                 let centery = height / 2;
                                 let rotx = centerx + (centerx - x);
@@ -1060,9 +1072,9 @@ fn new_filename(dir: &Path) -> String {
     f.to_str().unwrap().to_string()
 }
 
-fn new_layers(dir: &Path) -> Vec<Layer> {
+fn new_layers(args: &Args) -> Vec<Layer> {
     let mut layers = vec![Layer::new(0.0)];
-    if dir.display().to_string().contains("cards") {
+    if args.mini_deck {
         layers[0].add_base_rectangle(520, 745);
         layers[0].color = [180; 4];
         layers[0].fill_color = [255; 4];
@@ -1070,7 +1082,7 @@ fn new_layers(dir: &Path) -> Vec<Layer> {
         layers[1].add_base_rectangle(450, 675);
         layers[1].color = [240; 4];
         layers[1].fill_color = [255; 4];
-    } else if dir.display().to_string().contains("pieces") {
+    } else if args.large_circle_chit {
         layers[0].add_circle(295);
         layers[0].color = [0, 0, 0, 0];
         layers[0].fill_color = [255; 4];
