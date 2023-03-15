@@ -722,6 +722,8 @@ struct Args {
     mini_deck: bool,
     /// Use the large circle chit template for https://thegamegrafter.com.
     large_circle_chit: bool,
+    /// Create a 600x600 map tile
+    map_tile: bool,
     /// Create an animated gif and exit.
     gif: bool,
 }
@@ -1100,6 +1102,12 @@ fn new_layers(args: &Args) -> Vec<Layer> {
         layers[1].add_base_rectangle(450, 675);
         layers[1].color = [240; 4];
         layers[1].fill_color = [255; 4];
+    } else if args.map_tile {
+        layers[0].add_base_rectangle(800, 800);
+        layers[0].color = [180; 4];
+        layers[0].fill_color = [100, 255, 50, 255];
+        layers.push(Layer::new(0.0));
+        layers[1].color = [100, 100, 100, 255];
     } else if args.large_circle_chit {
         layers[0].add_circle(295);
         layers[0].color = [0, 0, 0, 0];
