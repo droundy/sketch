@@ -722,7 +722,7 @@ struct Args {
     mini_deck: bool,
     /// Use the large circle chit template for https://thegamegrafter.com.
     large_circle_chit: bool,
-    /// Create a 600x600 map tile
+    /// Create a 800x800 map tile
     map_tile: bool,
     /// Create an animated gif and exit.
     gif: bool,
